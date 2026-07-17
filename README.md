@@ -8,6 +8,7 @@ Aplicativo simples para registro de ponto e controle de ferias de um pequeno est
 - `/tablet` Marcacao de entrada, pausa, retorno e saida.
 - `/funcionario` Consulta simples do funcionario.
 - `/admin` Funcionarios, ferias e exportacao futura.
+- `/admin` ja carrega funcionarios, ferias, marcacoes do dia e banco de horas diretamente do Supabase.
 - Foto obrigatoria apenas na entrada para conferencia do gestor.
 - Validacao opcional por IP publico da loja.
 - Horas extras separadas e acumuladas em banco de horas.
