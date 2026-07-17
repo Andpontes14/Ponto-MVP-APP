@@ -25,9 +25,12 @@
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+ALLOWED_CLOCK_IPS=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` nunca deve ser exposta no navegador. Ela fica apenas no servidor local ou nas variaveis privadas da Vercel.
+
+`ALLOWED_CLOCK_IPS` e opcional. Preencha apenas se quiser permitir marcacao somente pelo IP publico da loja.
 
 3. Instalar dependencias:
 
@@ -54,6 +57,7 @@ npm run dev
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
+   - `ALLOWED_CLOCK_IPS`, opcional
 3. Publicar.
 4. Testar no tablet com o endereco da Vercel.
 
@@ -61,9 +65,10 @@ npm run dev
 
 - Testar os tres funcionarios ficticios.
 - Confirmar entrada, pausa, retorno e saida.
-- Confirmar que uma foto aparece no bucket privado `time-photos`.
+- Confirmar que uma foto aparece no bucket privado `time-photos` apenas na entrada.
 - Confirmar que PIN incorreto bloqueia a marcacao.
 - Confirmar que a foto da marcacao e exigida no tablet.
+- Confirmar que pausa, retorno e saida funcionam sem nova foto.
 - Conferir marcacoes para rever no painel administrativo.
 - Verificar o painel diario.
 - Verificar pedidos de ferias.

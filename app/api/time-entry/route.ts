@@ -13,13 +13,22 @@ export async function POST(request: Request) {
     const pin = String(formData.get("pin") ?? "").trim();
     const type = String(formData.get("type") ?? "") as TimeEntryType;
     const photo = formData.get("photo");
+    const clientIp = getClientIp(request);
 
     if (!code || !pin || !allowedTypes.includes(type)) {
       return NextResponse.json({ error: "Dados da marcacao incompletos." }, { status: 400 });
     }
 
-    if (!(photo instanceof File) || photo.size === 0) {
-      return NextResponse.json({ error: "A foto da marcacao e obrigatoria." }, { status: 400 });
+    if (!isAllowedClockIp(clientIp)) {
+      return NextResponse.json(
+        { error: "Marcacao bloqueada fora da rede autorizada da loja." },
+        { status: 403 }
+      );
+    }
+
+    const requiresPhoto = type === "entrada";
+    if (requiresPhoto && (!(photo instanceof File) || photo.size === 0)) {
+      return NextResponse.json({ error: "A foto e obrigatoria apenas na entrada." }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
@@ -38,23 +47,31 @@ export async function POST(request: Request) {
     }
 
     const now = new Date();
-    const dateKey = now.toISOString().slice(0, 10);
-    const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const photoPath = `${employee.employee_id}/${dateKey}/${Date.now()}-${safeName}`;
+    let photoPath: string | null = null;
+    const verificationFlags: string[] = [];
 
-    const photoBuffer = Buffer.from(await photo.arrayBuffer());
-    const { error: uploadError } = await supabase.storage
-      .from("time-photos")
-      .upload(photoPath, photoBuffer, {
-        contentType: photo.type || "image/jpeg",
-        upsert: false
-      });
+    if (photo instanceof File && photo.size > 0) {
+      const dateKey = now.toISOString().slice(0, 10);
+      const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      photoPath = `${employee.employee_id}/${dateKey}/${Date.now()}-${safeName}`;
 
-    if (uploadError) {
-      return NextResponse.json({ error: `Erro ao enviar foto: ${uploadError.message}` }, { status: 500 });
+      const photoBuffer = Buffer.from(await photo.arrayBuffer());
+      const { error: uploadError } = await supabase.storage
+        .from("time-photos")
+        .upload(photoPath, photoBuffer, {
+          contentType: photo.type || "image/jpeg",
+          upsert: false
+        });
+
+      if (uploadError) {
+        return NextResponse.json({ error: `Erro ao enviar foto: ${uploadError.message}` }, { status: 500 });
+      }
+
+      if (photo.size < 15_000) {
+        verificationFlags.push("Foto muito pequena, rever nitidez");
+      }
     }
 
-    const verificationFlags = photo.size < 15_000 ? ["Foto muito pequena, rever nitidez"] : [];
     const { data: entry, error: insertError } = await supabase
       .from("time_entries")
       .insert({
@@ -62,7 +79,7 @@ export async function POST(request: Request) {
         type,
         occurred_at: now.toISOString(),
         source: "tablet",
-        device_label: "Tablet loja",
+        device_label: clientIp ? `Rede loja (${clientIp})` : "Rede loja",
         photo_path: photoPath,
         verification_status: verificationFlags.length ? "rever" : "pendente",
         verification_flags: verificationFlags
@@ -147,4 +164,16 @@ async function createPendingOvertimeCredit(
 
 function diffMinutes(start: string, end: string) {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
+}
+
+function getClientIp(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) return forwardedFor.split(",")[0]?.trim();
+  return request.headers.get("x-real-ip")?.trim() ?? "";
+}
+
+function isAllowedClockIp(clientIp: string) {
+  const allowedIps = process.env.ALLOWED_CLOCK_IPS?.split(",").map((ip) => ip.trim()).filter(Boolean) ?? [];
+  if (!allowedIps.length) return true;
+  return allowedIps.includes(clientIp);
 }

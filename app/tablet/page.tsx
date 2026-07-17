@@ -34,8 +34,8 @@ export default function TabletPage() {
       return;
     }
 
-    if (!photoFile) {
-      setMessage("Tire ou anexe uma foto no tablet antes de confirmar a marcacao.");
+    if (type === "entrada" && !photoFile) {
+      setMessage("Tire ou anexe uma foto para confirmar a entrada.");
       return;
     }
 
@@ -44,7 +44,9 @@ export default function TabletPage() {
     payload.append("code", code);
     payload.append("pin", pin);
     payload.append("type", type);
-    payload.append("photo", photoFile);
+    if (photoFile) {
+      payload.append("photo", photoFile);
+    }
 
     setIsSubmitting(true);
     setMessage(`A registar ${action.toLowerCase()}...`);
@@ -75,8 +77,10 @@ export default function TabletPage() {
 
       setMessage(`${action} registada para ${result.employeeName ?? employee.name} as ${now}.${extraText}`);
       setPin("");
-      setPhotoFile(null);
-      setPhotoName("");
+      if (type === "entrada") {
+        setPhotoFile(null);
+        setPhotoName("");
+      }
     } catch {
       setMessage("Nao foi possivel comunicar com o servidor. Confirme a configuracao do Supabase.");
     } finally {
@@ -122,11 +126,11 @@ export default function TabletPage() {
 
           <div className="mt-5 flex items-center gap-2 rounded-md bg-oat p-3 text-sm text-black/70">
             <ShieldCheck size={18} />
-            O PIN real sera validado no Supabase. A foto serve para conferencia do gestor, sem reconhecimento facial automatico.
+            O PIN sera validado no Supabase. A foto e obrigatoria so na entrada; as outras marcacoes usam PIN e rede autorizada.
           </div>
 
           <label className="mt-5 block text-sm font-semibold text-black/65" htmlFor="photo">
-            Foto da marcacao
+            Foto da entrada
           </label>
           <input
             id="photo"
@@ -142,7 +146,7 @@ export default function TabletPage() {
           />
           <div className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-moss">
             <Camera size={17} />
-            {photoName || "Aguardando foto"}
+            {photoName || "Obrigatoria apenas para Entrada"}
           </div>
         </div>
 

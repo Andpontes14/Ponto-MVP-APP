@@ -8,7 +8,8 @@ Aplicativo simples para registro de ponto e controle de ferias de um pequeno est
 - `/tablet` Marcacao de entrada, pausa, retorno e saida.
 - `/funcionario` Consulta simples do funcionario.
 - `/admin` Funcionarios, ferias e exportacao futura.
-- Foto na marcacao para conferencia do gestor.
+- Foto obrigatoria apenas na entrada para conferencia do gestor.
+- Validacao opcional por IP publico da loja.
 - Horas extras separadas e acumuladas em banco de horas.
 - Opcoes de pagar, manter saldo ou abater com folga excepcional.
 
@@ -47,6 +48,9 @@ Abra `http://localhost:3000`.
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+ALLOWED_CLOCK_IPS=
 ```
 
 A chave `service_role` e usada apenas pela rota interna `/api/time-entry` para validar PIN, enviar foto ao bucket privado e gravar a marcacao.
+
+`ALLOWED_CLOCK_IPS` e opcional. Se preenchida, a marcacao so funciona nos IPs indicados.

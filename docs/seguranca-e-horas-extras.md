@@ -22,6 +22,36 @@ Reconhecimento facial e outros sistemas biometricos tratam dados sensiveis. A CN
 
 Para o MVP, foto de conferencia e menos complexa: nao identifica automaticamente a pessoa; apenas permite ao gestor verificar se a marcacao parece coerente.
 
+## Foto apenas na entrada
+
+Para reduzir armazenamento e atrito operacional:
+
+- a foto e obrigatoria apenas na `entrada`;
+- `inicio_pausa`, `fim_pausa` e `saida` usam codigo, PIN e validacao de local;
+- o gestor pode rever a foto de entrada quando houver duvida.
+
+Isto reduz cerca de 75% do volume de fotos em relacao a fotografar todas as quatro marcacoes do dia.
+
+## Validacao por rede da loja
+
+O navegador nao permite ler diretamente o nome do Wi-Fi por privacidade. A alternativa mais simples e validar o IP publico da loja.
+
+Variavel opcional:
+
+```text
+ALLOWED_CLOCK_IPS=111.222.333.444
+```
+
+Se houver mais de um IP:
+
+```text
+ALLOWED_CLOCK_IPS=111.222.333.444,555.666.777.888
+```
+
+Se a variavel ficar vazia, o app nao bloqueia por IP.
+
+Observacao: essa regra funciona melhor se a internet da loja tiver IP fixo. Se o IP mudar com frequencia, podemos evoluir para QR dinamico.
+
 ## Regra inicial de horas extras e banco de horas
 
 Regra simples para teste:
