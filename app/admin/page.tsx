@@ -1,4 +1,5 @@
-import { AlertTriangle, Download, Pencil, Plus, TimerReset, UserRoundCheck } from "lucide-react";
+import { AlertTriangle, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
+import { EmployeeForm } from "@/components/admin/employee-form";
 import { PageShell } from "@/components/page-shell";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
@@ -90,11 +91,9 @@ export default async function AdminPage() {
       title="Administracao"
       subtitle="Painel com dados reais do Supabase para acompanhar ponto, ferias e banco de horas."
     >
+      <EmployeeForm />
+
       <section className="mb-6 flex flex-wrap gap-3">
-        <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white">
-          <Plus size={18} />
-          Funcionario
-        </button>
         <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold">
           <Download size={18} />
           Exportar CSV

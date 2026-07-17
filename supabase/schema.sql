@@ -123,6 +123,15 @@ as $$
   limit 1;
 $$;
 
+create or replace function public.hash_employee_pin(employee_pin text)
+returns text
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select extensions.crypt(employee_pin, extensions.gen_salt('bf'));
+$$;
+
 alter table public.establishments enable row level security;
 alter table public.employees enable row level security;
 alter table public.time_entries enable row level security;
@@ -143,3 +152,4 @@ create policy "mvp_read_overtime_rules" on public.overtime_rules for select usin
 create policy "mvp_manage_hour_bank" on public.hour_bank_transactions for all using (true) with check (true);
 
 grant execute on function public.verify_employee_pin(text, text) to anon, authenticated, service_role;
+grant execute on function public.hash_employee_pin(text) to service_role;
