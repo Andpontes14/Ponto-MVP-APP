@@ -10,6 +10,7 @@ Aplicativo simples para registro de ponto e controle de ferias de um pequeno est
 - `/admin` Funcionarios, ferias e exportacao futura.
 - `/admin` ja carrega funcionarios, ferias, marcacoes do dia e banco de horas diretamente do Supabase.
 - Cadastro real de funcionarios pelo `/admin`, com PIN inicial guardado como hash.
+- O `/tablet` carrega funcionarios ativos do Supabase, incluindo novos cadastros.
 - Foto obrigatoria apenas na entrada para conferencia do gestor.
 - Validacao opcional por IP publico da loja.
 - Horas extras separadas e acumuladas em banco de horas.

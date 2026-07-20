@@ -3,6 +3,26 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
 export const runtime = "nodejs";
 
+export async function GET() {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("employees")
+      .select("id, code, name, role")
+      .eq("active", true)
+      .order("code", { ascending: true });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ employees: data ?? [] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro inesperado.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const payload = await request.json();

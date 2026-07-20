@@ -1,10 +1,16 @@
 "use client";
 
 import { Camera, CheckCircle2, Coffee, LogIn, LogOut, Pause, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
-import { employees } from "@/lib/mock-data";
 import type { TimeEntryType } from "@/lib/types";
+
+type TabletEmployee = {
+  id: string;
+  code: string;
+  name: string;
+  role: string;
+};
 
 const actions: { type: TimeEntryType; label: string; icon: typeof LogIn }[] = [
   { type: "entrada", label: "Entrada", icon: LogIn },
@@ -14,18 +20,45 @@ const actions: { type: TimeEntryType; label: string; icon: typeof LogIn }[] = [
 ];
 
 export default function TabletPage() {
-  const [code, setCode] = useState("001");
+  const [employees, setEmployees] = useState<TabletEmployee[]>([]);
+  const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
   const [photoName, setPhotoName] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [message, setMessage] = useState("Escolha o funcionario, tire a foto e confirme a marcacao.");
+  const [message, setMessage] = useState("A carregar funcionarios...");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
 
-  const employee = useMemo(() => employees.find((item) => item.code === code), [code]);
+  const employee = useMemo(() => employees.find((item) => item.code === code), [employees, code]);
+
+  useEffect(() => {
+    async function loadEmployees() {
+      try {
+        const response = await fetch("/api/employees", { cache: "no-store" });
+        const result = await response.json();
+
+        if (!response.ok) {
+          setMessage(result.error ?? "Nao foi possivel carregar funcionarios.");
+          return;
+        }
+
+        const loadedEmployees = result.employees ?? [];
+        setEmployees(loadedEmployees);
+        setCode((currentCode) => currentCode || loadedEmployees[0]?.code || "");
+        setMessage("Escolha o funcionario, tire a foto na entrada e confirme a marcacao.");
+      } catch {
+        setMessage("Nao foi possivel carregar funcionarios. Pode digitar o codigo manualmente.");
+      } finally {
+        setIsLoadingEmployees(false);
+      }
+    }
+
+    loadEmployees();
+  }, []);
 
   async function register(type: TimeEntryType) {
-    if (!employee) {
-      setMessage("Codigo nao encontrado.");
+    if (!code) {
+      setMessage("Informe o codigo do funcionario.");
       return;
     }
 
@@ -75,7 +108,7 @@ export default function TabletPage() {
             ).padStart(2, "0")}.`
           : "";
 
-      setMessage(`${action} registada para ${result.employeeName ?? employee.name} as ${now}.${extraText}`);
+      setMessage(`${action} registada para ${result.employeeName ?? employee?.name ?? code} as ${now}.${extraText}`);
       setPin("");
       if (type === "entrada") {
         setPhotoFile(null);
@@ -98,18 +131,30 @@ export default function TabletPage() {
           <label className="block text-sm font-semibold text-black/65" htmlFor="employee-code">
             Codigo do funcionario
           </label>
-          <select
-            id="employee-code"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3"
-          >
-            {employees.map((item) => (
-              <option key={item.id} value={item.code}>
-                {item.code} - {item.name}
-              </option>
-            ))}
-          </select>
+          {employees.length ? (
+            <select
+              id="employee-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              disabled={isLoadingEmployees}
+              className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3"
+            >
+              {employees.map((item) => (
+                <option key={item.id} value={item.code}>
+                  {item.code} - {item.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="employee-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              inputMode="numeric"
+              placeholder="Codigo"
+              className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3"
+            />
+          )}
 
           <label className="mt-5 block text-sm font-semibold text-black/65" htmlFor="pin">
             PIN
@@ -120,7 +165,7 @@ export default function TabletPage() {
             inputMode="numeric"
             value={pin}
             onChange={(event) => setPin(event.target.value)}
-            placeholder={employee ? `Teste: ${employee.pinHint}` : "0000"}
+            placeholder="PIN"
             className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3 text-xl tracking-[0.25em]"
           />
 
@@ -156,7 +201,7 @@ export default function TabletPage() {
               key={type}
               type="button"
               onClick={() => register(type)}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoadingEmployees}
               className="focus-ring flex min-h-[132px] flex-col items-start justify-between rounded-lg border border-black/10 bg-ink p-5 text-left text-white shadow-sm transition hover:bg-moss disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Icon size={30} />
