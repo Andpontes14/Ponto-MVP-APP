@@ -1,4 +1,5 @@
 import { AlertTriangle, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
+import { EmployeeActions } from "@/components/admin/employee-actions";
 import { EmployeeForm } from "@/components/admin/employee-form";
 import { PageShell } from "@/components/page-shell";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -138,7 +139,7 @@ export default async function AdminPage() {
                 <th className="px-4 py-3">Horas semanais</th>
                 <th className="px-4 py-3">Ferias disponiveis</th>
                 <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Editar</th>
+                <th className="px-4 py-3">Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -157,9 +158,12 @@ export default async function AdminPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-md border border-black/15">
+                    <div className="flex flex-wrap gap-2">
+                      <button className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-md border border-black/15">
                       <Pencil size={16} />
-                    </button>
+                      </button>
+                      <EmployeeActions employeeId={employee.id} active={employee.active} employeeName={employee.name} />
+                    </div>
                   </td>
                 </tr>
               ))}
