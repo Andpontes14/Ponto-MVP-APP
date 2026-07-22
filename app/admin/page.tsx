@@ -1,6 +1,7 @@
 import { AlertTriangle, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
 import { EmployeeActions } from "@/components/admin/employee-actions";
 import { EmployeeForm } from "@/components/admin/employee-form";
+import { HourBankActions } from "@/components/admin/hour-bank-actions";
 import { PageShell } from "@/components/page-shell";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
@@ -226,6 +227,7 @@ export default async function AdminPage() {
                 <th className="px-4 py-3">Horas</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Observacao</th>
+                <th className="px-4 py-3">Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -241,6 +243,17 @@ export default async function AdminPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{transaction.note}</td>
+                  <td className="px-4 py-3">
+                    <HourBankActions
+                      transactionId={transaction.id}
+                      employeeId={transaction.employee_id}
+                      employeeName={employeeNames.get(transaction.employee_id) ?? "Funcionario"}
+                      type={transaction.type}
+                      status={transaction.status}
+                      minutes={transaction.minutes}
+                      balanceMinutes={hourBankBalances.get(transaction.employee_id) ?? 0}
+                    />
+                  </td>
                 </tr>
               ))}
               <tr className="border-t border-black/10 bg-[#fff7e7]">
@@ -254,6 +267,7 @@ export default async function AdminPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3">Extras de hoje entram no banco apos revisao.</td>
+                <td className="px-4 py-3">-</td>
               </tr>
             </tbody>
           </table>
