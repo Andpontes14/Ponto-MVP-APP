@@ -2,6 +2,7 @@ import { AlertTriangle, Download, Pencil, TimerReset, UserRoundCheck } from "luc
 import { EmployeeActions } from "@/components/admin/employee-actions";
 import { EmployeeForm } from "@/components/admin/employee-form";
 import { HourBankActions } from "@/components/admin/hour-bank-actions";
+import { VacationActions } from "@/components/admin/vacation-actions";
 import { PageShell } from "@/components/page-shell";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
@@ -161,7 +162,7 @@ export default async function AdminPage() {
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
                       <button className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-md border border-black/15">
-                      <Pencil size={16} />
+                        <Pencil size={16} />
                       </button>
                       <EmployeeActions employeeId={employee.id} active={employee.active} employeeName={employee.name} />
                     </div>
@@ -279,25 +280,30 @@ export default async function AdminPage() {
           <h2 className="text-lg font-bold">Pedidos de ferias</h2>
         </div>
         <div className="divide-y divide-black/10">
-          {vacationRequests.map((request) => (
-            <div key={request.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
-              <div>
-                <div className="font-semibold">{employeeNames.get(request.employee_id) ?? "Funcionario"}</div>
-                <div className="text-sm text-black/60">
-                  {formatDate(request.start_date)} a {formatDate(request.end_date)} - {request.business_days} dias uteis
+          {vacationRequests.length ? (
+            vacationRequests.map((request) => {
+              const employeeName = employeeNames.get(request.employee_id) ?? "Funcionario";
+              return (
+                <div key={request.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                  <div>
+                    <div className="font-semibold">{employeeName}</div>
+                    <div className="text-sm text-black/60">
+                      {formatDate(request.start_date)} a {formatDate(request.end_date)} - {request.business_days} dias uteis
+                    </div>
+                    {request.note ? <div className="mt-1 text-sm text-black/55">{request.note}</div> : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold uppercase">{request.status}</span>
+                    <VacationActions requestId={request.id} employeeName={employeeName} status={request.status} />
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold uppercase">{request.status}</span>
-                <button className="focus-ring h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">
-                  Aprovar
-                </button>
-                <button className="focus-ring h-9 rounded-md border border-black/15 px-3 text-sm font-semibold">
-                  Recusar
-                </button>
-              </div>
+              );
+            })
+          ) : (
+            <div className="px-4 py-5 text-sm font-semibold text-black/55">
+              Nenhum pedido de ferias registado.
             </div>
-          ))}
+          )}
         </div>
       </section>
     </PageShell>
@@ -340,7 +346,7 @@ async function loadAdminData() {
     const hourBankTransactions = (hourBankResult.data ?? []) as HourBankRow[];
     const vacationRequests = (vacationResult.data ?? []) as VacationRow[];
     const employeeNames = new Map(employees.map((employee) => [employee.id, employee.name]));
-    const summaries = buildSummaries(employees, entries);
+    const summaries = buildSummaries(employees.filter((employee) => employee.active), entries);
     const hourBankBalances = buildHourBankBalances(employees, hourBankTransactions);
     const totalHourBankBalance = Array.from(hourBankBalances.values()).reduce((total, minutes) => total + minutes, 0);
 

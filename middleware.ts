@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const protectedPages = ["/", "/admin"];
-const protectedApiPrefixes = ["/api/hour-bank"];
+const protectedApiPrefixes = ["/api/hour-bank", "/api/vacations/"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -48,5 +48,5 @@ function isAuthorized(authorization: string | null, username: string, password: 
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/api/employees/:path*", "/api/hour-bank/:path*"]
+  matcher: ["/", "/admin/:path*", "/api/employees/:path*", "/api/hour-bank/:path*", "/api/vacations/:path*"]
 };
