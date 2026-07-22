@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
 import { EmployeeActions } from "@/components/admin/employee-actions";
 import { EmployeeForm } from "@/components/admin/employee-form";
 import { HourBankActions } from "@/components/admin/hour-bank-actions";
@@ -45,6 +45,7 @@ type VacationRow = {
   business_days: number;
   status: "pendente" | "aprovado" | "recusado";
   note: string | null;
+  created_at: string;
 };
 
 type DailySummary = {
@@ -88,6 +89,7 @@ export default async function AdminPage() {
   } = data;
   const reviews = summaries.filter((summary) => summary.verificationStatus === "rever");
   const totalOvertimeMinutes = summaries.reduce((total, summary) => total + summary.overtimeMinutes, 0);
+  const pendingVacationCount = vacationRequests.filter((request) => request.status === "pendente").length;
 
   return (
     <PageShell
@@ -103,7 +105,7 @@ export default async function AdminPage() {
         </button>
       </section>
 
-      <section className="mb-8 grid gap-4 md:grid-cols-2">
+      <section className="mb-8 grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-gold/35 bg-[#fff7e7] p-5 shadow-sm">
           <div className="mb-2 flex items-center gap-2 font-bold text-[#725018]">
             <TimerReset size={20} />
@@ -122,6 +124,16 @@ export default async function AdminPage() {
           <div className="text-3xl font-bold">{reviews.length}</div>
           <p className="mt-2 text-sm text-black/65">
             Conferir foto e horario antes de fechar o espelho mensal.
+          </p>
+        </div>
+        <div className="rounded-lg border border-gold/35 bg-[#fff7e7] p-5 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 font-bold text-[#725018]">
+            <CalendarClock size={20} />
+            Ferias pendentes
+          </div>
+          <div className="text-3xl font-bold">{pendingVacationCount}</div>
+          <p className="mt-2 text-sm text-black/65">
+            Pedidos aguardando aprovacao no fim do painel.
           </p>
         </div>
       </section>
@@ -290,6 +302,9 @@ export default async function AdminPage() {
                     <div className="text-sm text-black/60">
                       {formatDate(request.start_date)} a {formatDate(request.end_date)} - {request.business_days} dias uteis
                     </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-black/45">
+                      Pedido em {formatDate(request.created_at.slice(0, 10))}
+                    </div>
                     {request.note ? <div className="mt-1 text-sm text-black/55">{request.note}</div> : null}
                   </div>
                   <div className="flex items-center gap-2">
@@ -332,8 +347,8 @@ async function loadAdminData() {
         .limit(50),
       supabase
         .from("vacation_requests")
-        .select("id, employee_id, start_date, end_date, business_days, status, note")
-        .order("start_date", { ascending: true })
+        .select("id, employee_id, start_date, end_date, business_days, status, note, created_at")
+        .order("created_at", { ascending: false })
     ]);
 
     if (employeesResult.error) throw employeesResult.error;
@@ -344,7 +359,7 @@ async function loadAdminData() {
     const employees = (employeesResult.data ?? []) as EmployeeRow[];
     const entries = (entriesResult.data ?? []) as TimeEntryRow[];
     const hourBankTransactions = (hourBankResult.data ?? []) as HourBankRow[];
-    const vacationRequests = (vacationResult.data ?? []) as VacationRow[];
+    const vacationRequests = sortVacationRequests((vacationResult.data ?? []) as VacationRow[]);
     const employeeNames = new Map(employees.map((employee) => [employee.id, employee.name]));
     const summaries = buildSummaries(employees.filter((employee) => employee.active), entries);
     const hourBankBalances = buildHourBankBalances(employees, hourBankTransactions);
@@ -365,6 +380,20 @@ async function loadAdminData() {
       error: error instanceof Error ? error.message : "Erro inesperado ao carregar dados."
     };
   }
+}
+
+function sortVacationRequests(requests: VacationRow[]) {
+  const statusPriority = {
+    pendente: 0,
+    aprovado: 1,
+    recusado: 2
+  };
+
+  return [...requests].sort((first, second) => {
+    const statusDiff = statusPriority[first.status] - statusPriority[second.status];
+    if (statusDiff !== 0) return statusDiff;
+    return new Date(second.created_at).getTime() - new Date(first.created_at).getTime();
+  });
 }
 
 function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): DailySummary[] {
