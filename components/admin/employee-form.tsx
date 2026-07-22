@@ -28,6 +28,7 @@ export function EmployeeForm() {
     try {
       const response = await fetch("/api/employees", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json"
         },

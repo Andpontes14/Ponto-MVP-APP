@@ -59,3 +59,14 @@ ALLOWED_CLOCK_IPS=
 A chave `service_role` e usada apenas pela rota interna `/api/time-entry` para validar PIN, enviar foto ao bucket privado e gravar a marcacao.
 
 `ALLOWED_CLOCK_IPS` e opcional. Se preenchida, a marcacao so funciona nos IPs indicados.
+
+## Protecao do gestor
+
+As paginas `/` e `/admin`, alem das rotas de cadastro, desativacao e banco de horas, usam senha simples de gestor:
+
+```text
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=...
+```
+
+Na Vercel, crie essas variaveis em `Settings > Environment Variables` antes de fazer o deploy.

@@ -26,6 +26,7 @@ export function EmployeeActions({
     try {
       const response = await fetch(`/api/employees/${employeeId}`, {
         method: "PATCH",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json"
         },

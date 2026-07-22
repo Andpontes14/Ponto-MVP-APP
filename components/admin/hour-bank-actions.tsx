@@ -35,6 +35,7 @@ export function HourBankActions({
     try {
       const response = await fetch(`/api/hour-bank/${transactionId}`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action })
       });
@@ -83,6 +84,7 @@ export function HourBankActions({
     try {
       const response = await fetch("/api/hour-bank", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employeeId,
