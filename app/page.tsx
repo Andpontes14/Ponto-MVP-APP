@@ -1,42 +1,91 @@
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, TimerReset, UsersRound } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
-import {
-  buildDailySummaries,
-  employees,
-  employeeName,
-  formatDate,
-  formatTime,
-  minutesToHours,
-  totalHourBankBalance,
-  totalOvertimeMinutes,
-  vacationRequests
-} from "@/lib/mock-data";
+import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
-export default function DashboardPage() {
-  const summaries = buildDailySummaries();
+type EmployeeRow = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+};
+
+type TimeEntryRow = {
+  employee_id: string;
+  type: "entrada" | "inicio_pausa" | "fim_pausa" | "saida";
+  occurred_at: string;
+  verification_status: "pendente" | "confirmado" | "rever";
+  verification_flags: string[] | null;
+};
+
+type HourBankRow = {
+  employee_id: string;
+  minutes: number;
+  status: "pendente" | "aprovado" | "recusado";
+};
+
+type VacationRow = {
+  status: "pendente" | "aprovado" | "recusado";
+};
+
+type DailySummary = {
+  employeeId: string;
+  employeeName: string;
+  entrada?: string;
+  inicioPausa?: string;
+  fimPausa?: string;
+  saida?: string;
+  workedMinutes: number;
+  overtimeMinutes: number;
+  verificationStatus: "confirmado" | "rever";
+  issue?: string;
+};
+
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  const data = await loadDashboardData();
+
+  if ("error" in data) {
+    return (
+      <PageShell
+        title="Painel diario"
+        subtitle="Resumo operacional para acompanhar quem entrou, quem saiu, horas apuradas e pedidos de ferias."
+      >
+        <section className="rounded-lg border border-gold/35 bg-[#fff7e7] p-5 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 font-bold text-[#725018]">
+            <AlertTriangle size={20} />
+            Nao foi possivel carregar o painel
+          </div>
+          <p className="text-sm text-black/65">{data.error}</p>
+        </section>
+      </PageShell>
+    );
+  }
+
+  const { employees, summaries, pendingVacations, totalHourBankBalance, todayLabel } = data;
   const present = summaries.filter((summary) => summary.entrada && !summary.saida).length;
   const completed = summaries.filter((summary) => summary.entrada && summary.saida).length;
   const issues = summaries.filter((summary) => summary.issue || summary.verificationStatus === "rever").length;
-  const pendingVacations = vacationRequests.filter((request) => request.status === "pendente").length;
+  const totalOvertimeMinutes = summaries.reduce((total, summary) => total + summary.overtimeMinutes, 0);
 
   return (
     <PageShell
       title="Painel diario"
-      subtitle="Resumo operacional para acompanhar quem entrou, quem saiu, horas apuradas e pedidos de ferias."
+      subtitle="Resumo real do Supabase para acompanhar equipa, ponto, anomalias e banco de horas."
     >
       <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <StatCard icon={UsersRound} label="Funcionarios ativos" value={String(employees.length)} />
         <StatCard icon={Clock} label="Presentes agora" value={String(present)} tone="success" />
         <StatCard icon={CheckCircle2} label="Jornadas fechadas" value={String(completed)} />
         <StatCard icon={CalendarClock} label="Ferias pendentes" value={String(pendingVacations)} tone="warning" />
-        <StatCard icon={TimerReset} label="Extras hoje" value={minutesToHours(totalOvertimeMinutes())} tone="warning" />
-        <StatCard icon={TimerReset} label="Banco acumulado" value={minutesToHours(totalHourBankBalance())} tone="success" />
+        <StatCard icon={TimerReset} label="Extras hoje" value={minutesToHours(totalOvertimeMinutes)} tone="warning" />
+        <StatCard icon={TimerReset} label="Banco acumulado" value={minutesToHours(totalHourBankBalance)} tone="success" />
       </section>
 
       <section className="mt-8 overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
-          <h2 className="text-lg font-bold">Ponto de {formatDate("2026-07-17")}</h2>
+          <h2 className="text-lg font-bold">Ponto de {todayLabel}</h2>
           {issues > 0 ? (
             <span className="inline-flex items-center gap-2 rounded-md bg-[#fff2d8] px-3 py-1 text-sm font-semibold text-[#725018]">
               <AlertTriangle size={16} />
@@ -62,7 +111,7 @@ export default function DashboardPage() {
             <tbody>
               {summaries.map((summary) => (
                 <tr key={summary.employeeId} className="border-t border-black/10">
-                  <td className="px-4 py-3 font-semibold">{employeeName(summary.employeeId)}</td>
+                  <td className="px-4 py-3 font-semibold">{summary.employeeName}</td>
                   <td className="px-4 py-3">{formatTime(summary.entrada)}</td>
                   <td className="px-4 py-3">{formatTime(summary.inicioPausa)}</td>
                   <td className="px-4 py-3">{formatTime(summary.fimPausa)}</td>
@@ -85,9 +134,17 @@ export default function DashboardPage() {
                       <span className="rounded-md bg-[#fff2d8] px-2 py-1 text-xs font-semibold text-[#725018]">
                         {summary.issue}
                       </span>
-                    ) : (
+                    ) : summary.entrada && summary.saida ? (
                       <span className="rounded-md bg-[#e8f3e6] px-2 py-1 text-xs font-semibold text-moss">
                         Completo
+                      </span>
+                    ) : summary.entrada ? (
+                      <span className="rounded-md bg-[#e8f3e6] px-2 py-1 text-xs font-semibold text-moss">
+                        Em curso
+                      </span>
+                    ) : (
+                      <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold text-black/60">
+                        Sem marcacao
                       </span>
                     )}
                   </td>
@@ -99,4 +156,119 @@ export default function DashboardPage() {
       </section>
     </PageShell>
   );
+}
+
+async function loadDashboardData() {
+  try {
+    const supabase = getSupabaseAdmin();
+    const today = getLisbonDateString();
+    const dayStart = `${today}T00:00:00+01:00`;
+    const dayEnd = `${today}T23:59:59+01:00`;
+
+    const [employeesResult, entriesResult, hourBankResult, vacationResult] = await Promise.all([
+      supabase.from("employees").select("id, code, name, active").eq("active", true).order("code", { ascending: true }),
+      supabase
+        .from("time_entries")
+        .select("employee_id, type, occurred_at, verification_status, verification_flags")
+        .gte("occurred_at", dayStart)
+        .lte("occurred_at", dayEnd)
+        .order("occurred_at", { ascending: true }),
+      supabase.from("hour_bank_transactions").select("employee_id, minutes, status").eq("status", "aprovado"),
+      supabase.from("vacation_requests").select("status").eq("status", "pendente")
+    ]);
+
+    if (employeesResult.error) throw employeesResult.error;
+    if (entriesResult.error) throw entriesResult.error;
+    if (hourBankResult.error) throw hourBankResult.error;
+    if (vacationResult.error) throw vacationResult.error;
+
+    const employees = (employeesResult.data ?? []) as EmployeeRow[];
+    const entries = (entriesResult.data ?? []) as TimeEntryRow[];
+    const hourBank = (hourBankResult.data ?? []) as HourBankRow[];
+    const vacations = (vacationResult.data ?? []) as VacationRow[];
+    const summaries = buildSummaries(employees, entries);
+    const totalHourBankBalance = hourBank.reduce((total, transaction) => total + Number(transaction.minutes), 0);
+
+    return {
+      employees,
+      summaries,
+      pendingVacations: vacations.length,
+      totalHourBankBalance,
+      todayLabel: formatDate(today)
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Erro inesperado ao carregar dados."
+    };
+  }
+}
+
+function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): DailySummary[] {
+  return employees.map((employee) => {
+    const employeeEntries = entries.filter((entry) => entry.employee_id === employee.id);
+    const byType = Object.fromEntries(employeeEntries.map((entry) => [entry.type, entry.occurred_at]));
+    const hasReview = employeeEntries.some((entry) => entry.verification_status === "rever");
+    let workedMinutes = 0;
+    let issue: string | undefined;
+
+    if (byType.entrada && byType.saida) {
+      workedMinutes = diffMinutes(byType.entrada, byType.saida);
+      if (byType.inicio_pausa && byType.fim_pausa) {
+        workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
+      }
+    } else if (employeeEntries.length > 0 && !byType.entrada) {
+      issue = "Sem entrada";
+    } else if (byType.entrada && byType.inicio_pausa && !byType.fim_pausa) {
+      issue = "Pausa aberta";
+    }
+
+    return {
+      employeeId: employee.id,
+      employeeName: employee.name,
+      entrada: byType.entrada,
+      inicioPausa: byType.inicio_pausa,
+      fimPausa: byType.fim_pausa,
+      saida: byType.saida,
+      workedMinutes,
+      overtimeMinutes: Math.max(0, workedMinutes - 480),
+      verificationStatus: hasReview ? "rever" : "confirmado",
+      issue
+    };
+  });
+}
+
+function getLisbonDateString() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function formatDate(date: string) {
+  return new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatTime(dateTime?: string) {
+  if (!dateTime) return "-";
+  return new Intl.DateTimeFormat("pt-PT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Lisbon"
+  }).format(new Date(dateTime));
+}
+
+function minutesToHours(minutes: number) {
+  const hours = Math.floor(Math.abs(minutes) / 60);
+  const mins = Math.abs(minutes) % 60;
+  return `${hours}h${String(mins).padStart(2, "0")}`;
+}
+
+function diffMinutes(start: string, end: string) {
+  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }

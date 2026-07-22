@@ -13,6 +13,7 @@ Aplicativo simples para registro de ponto e controle de ferias de um pequeno est
 - O `/tablet` carrega funcionarios ativos do Supabase, incluindo novos cadastros.
 - Funcionarios podem ser desativados no `/admin`; eles somem do `/tablet`, mas o historico permanece.
 - Banco de horas no `/admin` permite aprovar/recusar movimentos pendentes e criar baixas por pagamento ou folga.
+- O painel `/` carrega dados reais do Supabase e conta apenas funcionarios ativos.
 - Foto obrigatoria apenas na entrada para conferencia do gestor.
 - Validacao opcional por IP publico da loja.
 - Horas extras separadas e acumuladas em banco de horas.
