@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Nav } from "./nav";
 
 export function PageShell({
@@ -11,7 +12,9 @@ export function PageShell({
 }) {
   return (
     <main className="min-h-screen">
-      <Nav />
+      <Suspense fallback={null}>
+        <Nav />
+      </Suspense>
       <div className="mx-auto max-w-6xl px-4 py-8">
         <header className="mb-7">
           <p className="text-sm font-semibold uppercase tracking-[0.12em] text-moss">Seventh Brunch</p>

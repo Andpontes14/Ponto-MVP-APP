@@ -71,3 +71,13 @@ ADMIN_PASSWORD=...
 ```
 
 Na Vercel, crie essas variaveis em `Settings > Environment Variables` antes de fazer o deploy.
+
+## Link do funcionario
+
+Envie ao funcionario:
+
+```text
+https://SEU-DOMINIO/tablet?modo=funcionario
+```
+
+Com `modo=funcionario`, a navegacao mostra apenas `Tablet` e `Funcionario`. O gestor pode usar `/tablet` normalmente e continuar vendo `Painel` e `Admin`.
