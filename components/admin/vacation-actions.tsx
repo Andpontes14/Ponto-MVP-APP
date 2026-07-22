@@ -17,6 +17,7 @@ export function VacationActions({
 }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState(status);
 
   async function updateVacation(action: "aprovar" | "recusar") {
     const label = action === "aprovar" ? "aprovar" : "recusar";
@@ -37,7 +38,9 @@ export function VacationActions({
         return;
       }
 
+      setCurrentStatus(result.request?.status ?? currentStatus);
       router.refresh();
+      window.location.reload();
     } catch {
       window.alert("Erro de comunicacao ao atualizar pedido.");
     } finally {
@@ -45,7 +48,7 @@ export function VacationActions({
     }
   }
 
-  if (status !== "pendente") {
+  if (currentStatus !== "pendente") {
     return (
       <span className="inline-flex h-9 items-center gap-2 rounded-md bg-oat px-3 text-sm font-semibold text-black/55">
         <Clock size={15} />

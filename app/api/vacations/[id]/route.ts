@@ -24,7 +24,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     if (current.status !== "pendente") {
-      return NextResponse.json({ error: "Apenas pedidos pendentes podem ser alterados." }, { status: 400 });
+      return NextResponse.json({
+        ok: true,
+        alreadyDecided: true,
+        request: current
+      });
     }
 
     const status = action === "aprovar" ? "aprovado" : "recusado";
