@@ -5,7 +5,7 @@ export default function EmployeePage() {
   return (
     <PageShell
       title="Area do funcionario"
-      subtitle="Pedidos de ferias com validacao por codigo e PIN."
+      subtitle="Pedidos, ferias, folgas e banco de horas com validacao por codigo e PIN."
     >
       <VacationRequestForm />
     </PageShell>
