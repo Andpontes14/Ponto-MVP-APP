@@ -58,6 +58,22 @@ type DailySummary = {
 
 export const dynamic = "force-dynamic";
 
+const fictitiousCodes = ["001", "002", "003"];
+const fictitiousNames = ["Maria Silva", "Joao Costa", "Ana Martins"];
+const fictitiousIds = [
+  "10000000-0000-0000-0000-000000000001",
+  "10000000-0000-0000-0000-000000000002",
+  "10000000-0000-0000-0000-000000000003"
+];
+const fictitiousHourBankNotes = [
+  "Pagamento de horas extras",
+  "Folga excepcional",
+  "Pagar 2h no fechamento mensal",
+  "Saiu 1h mais cedo por folga excepcional",
+  "Extras acumuladas da semana anterior",
+  "Horas extra mantidas em banco"
+];
+
 export default async function AdminPage() {
   const data = await loadAdminData();
 
@@ -358,10 +374,23 @@ async function loadAdminData() {
     if (hourBankResult.error) throw hourBankResult.error;
     if (vacationResult.error) throw vacationResult.error;
 
-    const employees = (employeesResult.data ?? []) as EmployeeRow[];
-    const entries = (entriesResult.data ?? []) as TimeEntryRow[];
-    const hourBankTransactions = (hourBankResult.data ?? []) as HourBankRow[];
-    const vacationRequests = sortVacationRequests((vacationResult.data ?? []) as VacationRow[]);
+    const allEmployees = (employeesResult.data ?? []) as EmployeeRow[];
+    const fictitiousEmployeeIds = new Set(
+      allEmployees.filter((employee) => isFictitiousEmployee(employee)).map((employee) => employee.id)
+    );
+    const employees = allEmployees.filter((employee) => !fictitiousEmployeeIds.has(employee.id));
+    const entries = ((entriesResult.data ?? []) as TimeEntryRow[]).filter(
+      (entry) => !fictitiousEmployeeIds.has(entry.employee_id)
+    );
+    const hourBankTransactions = ((hourBankResult.data ?? []) as HourBankRow[]).filter(
+      (transaction) =>
+        !fictitiousEmployeeIds.has(transaction.employee_id) && !isKnownFictitiousHourBank(transaction)
+    );
+    const vacationRequests = sortVacationRequests(
+      ((vacationResult.data ?? []) as VacationRow[]).filter(
+        (request) => !fictitiousEmployeeIds.has(request.employee_id) && !isKnownFictitiousVacation(request)
+      )
+    );
     const employeeNames = new Map(employees.map((employee) => [employee.id, employee.name]));
     const summaries = buildSummaries(employees.filter((employee) => employee.active), entries);
     const hourBankBalances = buildHourBankBalances(employees, hourBankTransactions);
@@ -382,6 +411,29 @@ async function loadAdminData() {
       error: error instanceof Error ? error.message : "Erro inesperado ao carregar dados."
     };
   }
+}
+
+function isFictitiousEmployee(employee: EmployeeRow) {
+  return (
+    fictitiousCodes.includes(employee.code) ||
+    fictitiousNames.includes(employee.name) ||
+    fictitiousIds.includes(employee.id)
+  );
+}
+
+function isKnownFictitiousHourBank(transaction: HourBankRow) {
+  return (
+    fictitiousIds.includes(transaction.employee_id) ||
+    fictitiousHourBankNotes.includes(transaction.note)
+  );
+}
+
+function isKnownFictitiousVacation(request: VacationRow) {
+  return (
+    fictitiousIds.includes(request.employee_id) ||
+    (request.start_date === "2026-08-10" && request.end_date === "2026-08-14") ||
+    (request.start_date === "2026-09-07" && request.end_date === "2026-09-11")
+  );
 }
 
 function sortVacationRequests(requests: VacationRow[]) {
