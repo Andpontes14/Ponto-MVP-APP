@@ -99,10 +99,13 @@ export default async function AdminPage() {
       <EmployeeForm />
 
       <section className="mb-6 flex flex-wrap gap-3">
-        <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold">
+        <a
+          href="/api/reports/monthly"
+          className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold"
+        >
           <Download size={18} />
           Exportar CSV
-        </button>
+        </a>
       </section>
 
       <section className="mb-8 grid gap-4 md:grid-cols-3">
@@ -328,9 +331,8 @@ export default async function AdminPage() {
 async function loadAdminData() {
   try {
     const supabase = getSupabaseAdmin();
-    const today = new Date().toISOString().slice(0, 10);
-    const dayStart = `${today}T00:00:00.000Z`;
-    const dayEnd = `${today}T23:59:59.999Z`;
+    const today = getLisbonDateString();
+    const { dayStart, dayEnd } = getLisbonDayRange(today);
 
     const [employeesResult, entriesResult, hourBankResult, vacationResult] = await Promise.all([
       supabase.from("employees").select("*").order("code", { ascending: true }),
@@ -445,6 +447,43 @@ function formatDate(date: string) {
     month: "2-digit",
     year: "numeric"
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function getLisbonDateString() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function getLisbonDayRange(date: string) {
+  return {
+    dayStart: zonedDateTimeToUtcIso(date, "00:00:00", "Europe/Lisbon"),
+    dayEnd: zonedDateTimeToUtcIso(date, "23:59:59", "Europe/Lisbon")
+  };
+}
+
+function zonedDateTimeToUtcIso(date: string, time: string, timeZone: string) {
+  const utcGuess = new Date(`${date}T${time}.000Z`);
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60000).toISOString();
+}
+
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset"
+  }).formatToParts(date);
+  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!match) return 0;
+
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2] ?? 0);
+  const minutes = Number(match[3] ?? 0);
+  return sign * (hours * 60 + minutes);
 }
 
 function minutesToHours(minutes: number) {
