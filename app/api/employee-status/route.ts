@@ -23,6 +23,13 @@ type HourBankRow = {
   created_at: string;
 };
 
+type TimeEntryRow = {
+  type: "entrada" | "inicio_pausa" | "fim_pausa" | "saida";
+  occurred_at: string;
+  verification_status: "pendente" | "confirmado" | "rever";
+  verification_flags: string[] | null;
+};
+
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
@@ -48,7 +55,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Codigo ou PIN invalido." }, { status: 401 });
     }
 
-    const [employeeResult, vacationResult, hourBankResult] = await Promise.all([
+    const since = new Date();
+    since.setDate(since.getDate() - 21);
+
+    const [employeeResult, vacationResult, hourBankResult, timeEntriesResult] = await Promise.all([
       supabase
         .from("employees")
         .select("id, code, name, role, vacation_allowance, vacation_used")
@@ -65,16 +75,25 @@ export async function POST(request: Request) {
         .select("id, type, minutes, transaction_date, status, note, created_at")
         .eq("employee_id", verifiedEmployee.employee_id)
         .order("transaction_date", { ascending: false })
-        .limit(30)
+        .limit(30),
+      supabase
+        .from("time_entries")
+        .select("type, occurred_at, verification_status, verification_flags")
+        .eq("employee_id", verifiedEmployee.employee_id)
+        .gte("occurred_at", since.toISOString())
+        .order("occurred_at", { ascending: false })
+        .limit(120)
     ]);
 
     if (employeeResult.error) throw employeeResult.error;
     if (vacationResult.error) throw vacationResult.error;
     if (hourBankResult.error) throw hourBankResult.error;
+    if (timeEntriesResult.error) throw timeEntriesResult.error;
 
     const employee = employeeResult.data;
     const vacations = sortVacations((vacationResult.data ?? []) as VacationRow[]);
     const hourBank = (hourBankResult.data ?? []) as HourBankRow[];
+    const timeDays = buildTimeDays((timeEntriesResult.data ?? []) as TimeEntryRow[]);
     const approvedVacationDays = vacations
       .filter((request) => request.status === "aprovado")
       .reduce((total, request) => total + Number(request.business_days), 0);
@@ -94,12 +113,60 @@ export async function POST(request: Request) {
         hourBankBalanceMinutes: approvedHourBankMinutes
       },
       vacations,
-      hourBank
+      hourBank,
+      timeDays
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro inesperado.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function buildTimeDays(entries: TimeEntryRow[]) {
+  const byDate = new Map<string, TimeEntryRow[]>();
+  for (const entry of entries) {
+    const date = getLisbonDateString(new Date(entry.occurred_at));
+    byDate.set(date, [...(byDate.get(date) ?? []), entry]);
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([first], [second]) => second.localeCompare(first))
+    .slice(0, 14)
+    .map(([date, dateEntries]) => {
+      const ordered = [...dateEntries].sort(
+        (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+      );
+      const byType = Object.fromEntries(ordered.map((entry) => [entry.type, entry.occurred_at]));
+      const hasReview = ordered.some((entry) => entry.verification_status === "rever");
+      const flags = ordered.flatMap((entry) => entry.verification_flags ?? []);
+      let workedMinutes = 0;
+      let issue = "";
+
+      if (byType.entrada && byType.saida) {
+        workedMinutes = diffMinutes(byType.entrada, byType.saida);
+        if (byType.inicio_pausa && byType.fim_pausa) {
+          workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
+        }
+      } else if (ordered.length > 0 && !byType.entrada) {
+        issue = "Sem entrada";
+      } else if (byType.entrada && byType.inicio_pausa && !byType.fim_pausa) {
+        issue = "Pausa aberta";
+      } else if (byType.entrada && !byType.saida) {
+        issue = "Em curso";
+      }
+
+      return {
+        date,
+        entrada: byType.entrada ?? null,
+        inicio_pausa: byType.inicio_pausa ?? null,
+        fim_pausa: byType.fim_pausa ?? null,
+        saida: byType.saida ?? null,
+        workedMinutes,
+        verificationStatus: hasReview ? "rever" : "ok",
+        flags,
+        issue
+      };
+    });
 }
 
 function sortVacations(requests: VacationRow[]) {
@@ -114,4 +181,17 @@ function sortVacations(requests: VacationRow[]) {
     if (statusDiff !== 0) return statusDiff;
     return new Date(second.created_at).getTime() - new Date(first.created_at).getTime();
   });
+}
+
+function getLisbonDateString(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function diffMinutes(start: string, end: string) {
+  return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }
