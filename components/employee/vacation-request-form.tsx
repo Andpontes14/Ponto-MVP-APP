@@ -22,6 +22,7 @@ type EmployeeStatus = {
   };
   vacations: VacationRequest[];
   hourBank: HourBankTransaction[];
+  timeDays: TimeDay[];
 };
 
 type VacationRequest = {
@@ -44,6 +45,18 @@ type HourBankTransaction = {
   created_at: string;
 };
 
+type TimeDay = {
+  date: string;
+  entrada: string | null;
+  inicio_pausa: string | null;
+  fim_pausa: string | null;
+  saida: string | null;
+  workedMinutes: number;
+  verificationStatus: "ok" | "rever";
+  flags: string[];
+  issue: string;
+};
+
 export function VacationRequestForm() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [code, setCode] = useState("");
@@ -51,9 +64,13 @@ export function VacationRequestForm() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [note, setNote] = useState("");
+  const [hourBankDate, setHourBankDate] = useState("");
+  const [hourBankHours, setHourBankHours] = useState("");
+  const [hourBankNote, setHourBankNote] = useState("");
   const [message, setMessage] = useState("A carregar funcionarios...");
   const [statusData, setStatusData] = useState<EmployeeStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingHourBank, setIsSubmittingHourBank] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
 
   useEffect(() => {
@@ -151,6 +168,48 @@ export function VacationRequestForm() {
       setMessage("Erro de comunicacao ao enviar pedido de ferias.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function submitHourBankRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!code || pin.length < 4 || !hourBankDate || !hourBankHours) {
+      setMessage("Preencha funcionario, PIN, data e horas da folga.");
+      return;
+    }
+
+    setIsSubmittingHourBank(true);
+    setMessage("A enviar pedido de folga...");
+
+    try {
+      const response = await fetch("/api/employee-hour-bank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          pin,
+          date: hourBankDate,
+          hours: Number(hourBankHours),
+          note: hourBankNote
+        })
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        setMessage(result.error ?? "Nao foi possivel enviar o pedido de folga.");
+        return;
+      }
+
+      setHourBankDate("");
+      setHourBankHours("");
+      setHourBankNote("");
+      setMessage("Pedido de folga enviado e aguardando aprovacao.");
+      await loadStatus();
+    } catch {
+      setMessage("Erro de comunicacao ao enviar pedido de folga.");
+    } finally {
+      setIsSubmittingHourBank(false);
     }
   }
 
@@ -274,6 +333,68 @@ export function VacationRequestForm() {
               {isSubmitting ? "A enviar" : "Enviar pedido"}
             </button>
           </form>
+
+          <div className="my-6 border-t border-black/10" />
+
+          <div className="mb-5 flex items-center gap-2 font-bold text-moss">
+            <TimerReset size={21} />
+            Pedido de folga do banco
+          </div>
+
+          <form onSubmit={submitHourBankRequest} className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-semibold text-black/65" htmlFor="hour-bank-date">
+                  Data da folga
+                </label>
+                <input
+                  id="hour-bank-date"
+                  type="date"
+                  value={hourBankDate}
+                  onChange={(event) => setHourBankDate(event.target.value)}
+                  className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-black/65" htmlFor="hour-bank-hours">
+                  Horas
+                </label>
+                <input
+                  id="hour-bank-hours"
+                  type="number"
+                  min="0.25"
+                  max="12"
+                  step="0.25"
+                  value={hourBankHours}
+                  onChange={(event) => setHourBankHours(event.target.value)}
+                  placeholder="Ex.: 2"
+                  className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3"
+                />
+              </div>
+            </div>
+
+            <label className="block text-sm font-semibold text-black/65" htmlFor="hour-bank-note">
+              Observacao
+            </label>
+            <textarea
+              id="hour-bank-note"
+              value={hourBankNote}
+              onChange={(event) => setHourBankNote(event.target.value)}
+              rows={3}
+              placeholder="Opcional"
+              className="focus-ring w-full rounded-md border border-black/15 bg-white px-3 py-3"
+            />
+
+            <button
+              type="submit"
+              disabled={isSubmittingHourBank}
+              className="focus-ring inline-flex h-12 items-center justify-center gap-2 rounded-md bg-moss px-4 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Send size={18} />
+              {isSubmittingHourBank ? "A enviar" : "Pedir folga"}
+            </button>
+          </form>
         </div>
 
         <div className="rounded-lg border border-black/10 bg-white p-5 shadow-sm">
@@ -304,7 +425,64 @@ export function VacationRequestForm() {
       </section>
 
       {statusData ? (
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section className="grid gap-6">
+          <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
+            <div className="border-b border-black/10 px-4 py-3">
+              <h2 className="text-lg font-bold">Minhas marcacoes recentes</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <thead className="bg-oat text-xs uppercase text-black/60">
+                  <tr>
+                    <th className="px-4 py-3">Data</th>
+                    <th className="px-4 py-3">Entrada</th>
+                    <th className="px-4 py-3">Inicio pausa</th>
+                    <th className="px-4 py-3">Fim pausa</th>
+                    <th className="px-4 py-3">Saida</th>
+                    <th className="px-4 py-3">Total</th>
+                    <th className="px-4 py-3">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statusData.timeDays.length ? (
+                    statusData.timeDays.map((day) => (
+                      <tr key={day.date} className="border-t border-black/10">
+                        <td className="px-4 py-3 font-semibold">{formatDate(day.date)}</td>
+                        <td className="px-4 py-3">{formatTime(day.entrada)}</td>
+                        <td className="px-4 py-3">{formatTime(day.inicio_pausa)}</td>
+                        <td className="px-4 py-3">{formatTime(day.fim_pausa)}</td>
+                        <td className="px-4 py-3">{formatTime(day.saida)}</td>
+                        <td className="px-4 py-3 font-semibold">{minutesToHours(day.workedMinutes)}</td>
+                        <td className="px-4 py-3">
+                          {day.issue ? (
+                            <span className="rounded-md bg-[#fff2d8] px-2 py-1 text-xs font-semibold text-[#725018]">
+                              {day.issue}
+                            </span>
+                          ) : day.verificationStatus === "rever" ? (
+                            <span className="rounded-md bg-[#fff2d8] px-2 py-1 text-xs font-semibold text-[#725018]">
+                              Rever
+                            </span>
+                          ) : (
+                            <span className="rounded-md bg-[#e8f3e6] px-2 py-1 text-xs font-semibold text-moss">
+                              OK
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="border-t border-black/10">
+                      <td className="px-4 py-5 text-sm font-semibold text-black/55" colSpan={7}>
+                        Nenhuma marcacao recente.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
           <div className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
             <div className="border-b border-black/10 px-4 py-3">
               <h2 className="text-lg font-bold">Meus pedidos de ferias</h2>
@@ -357,6 +535,7 @@ export function VacationRequestForm() {
                 </div>
               )}
             </div>
+          </div>
           </div>
         </section>
       ) : null}
@@ -415,6 +594,15 @@ function formatDate(date: string) {
     month: "2-digit",
     year: "numeric"
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatTime(dateTime: string | null) {
+  if (!dateTime) return "-";
+  return new Intl.DateTimeFormat("pt-PT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Lisbon"
+  }).format(new Date(dateTime));
 }
 
 function minutesToHours(minutes: number) {
