@@ -47,13 +47,31 @@ export async function POST(request: Request) {
     }
 
     const now = new Date();
+    const today = getLisbonDateString(now);
+    const { dayStart, dayEnd } = getLisbonDayRange(today);
+    const { data: existingEntries, error: existingError } = await supabase
+      .from("time_entries")
+      .select("type, occurred_at")
+      .eq("employee_id", employee.employee_id)
+      .gte("occurred_at", dayStart)
+      .lte("occurred_at", dayEnd)
+      .order("occurred_at", { ascending: true });
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+
+    const sequenceError = validateSequence(type, existingEntries ?? []);
+    if (sequenceError) {
+      return NextResponse.json({ error: sequenceError }, { status: 409 });
+    }
+
     let photoPath: string | null = null;
     const verificationFlags: string[] = [];
 
     if (photo instanceof File && photo.size > 0) {
-      const dateKey = now.toISOString().slice(0, 10);
       const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      photoPath = `${employee.employee_id}/${dateKey}/${Date.now()}-${safeName}`;
+      photoPath = `${employee.employee_id}/${today}/${Date.now()}-${safeName}`;
 
       const photoBuffer = Buffer.from(await photo.arrayBuffer());
       const { error: uploadError } = await supabase.storage
@@ -113,17 +131,15 @@ async function createPendingOvertimeCredit(
   employeeId: string,
   now: Date
 ) {
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(now);
-  dayEnd.setHours(23, 59, 59, 999);
+  const transactionDate = getLisbonDateString(now);
+  const { dayStart, dayEnd } = getLisbonDayRange(transactionDate);
 
   const { data: entries, error } = await supabase
     .from("time_entries")
     .select("type, occurred_at")
     .eq("employee_id", employeeId)
-    .gte("occurred_at", dayStart.toISOString())
-    .lte("occurred_at", dayEnd.toISOString())
+    .gte("occurred_at", dayStart)
+    .lte("occurred_at", dayEnd)
     .order("occurred_at", { ascending: true });
 
   if (error || !entries?.length) return 0;
@@ -139,7 +155,6 @@ async function createPendingOvertimeCredit(
   const overtimeMinutes = Math.max(0, workedMinutes - 480);
   if (overtimeMinutes <= 0) return 0;
 
-  const transactionDate = now.toISOString().slice(0, 10);
   const { data: existing } = await supabase
     .from("hour_bank_transactions")
     .select("id")
@@ -162,6 +177,32 @@ async function createPendingOvertimeCredit(
   return overtimeMinutes;
 }
 
+function validateSequence(type: TimeEntryType, entries: { type: TimeEntryType; occurred_at: string }[]) {
+  const types = new Set(entries.map((entry) => entry.type));
+
+  if (types.has(type)) {
+    return "Esta marcacao ja foi registada hoje.";
+  }
+
+  if (type !== "entrada" && !types.has("entrada")) {
+    return "Registe a entrada antes das outras marcacoes.";
+  }
+
+  if (type === "fim_pausa" && !types.has("inicio_pausa")) {
+    return "Registe o inicio da pausa antes do fim da pausa.";
+  }
+
+  if (type === "saida" && types.has("inicio_pausa") && !types.has("fim_pausa")) {
+    return "Feche a pausa antes de registar a saida.";
+  }
+
+  if ((type === "inicio_pausa" || type === "fim_pausa") && types.has("saida")) {
+    return "A jornada ja foi fechada com saida.";
+  }
+
+  return "";
+}
+
 function diffMinutes(start: string, end: string) {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }
@@ -176,4 +217,41 @@ function isAllowedClockIp(clientIp: string) {
   const allowedIps = process.env.ALLOWED_CLOCK_IPS?.split(",").map((ip) => ip.trim()).filter(Boolean) ?? [];
   if (!allowedIps.length) return true;
   return allowedIps.includes(clientIp);
+}
+
+function getLisbonDateString(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function getLisbonDayRange(date: string) {
+  return {
+    dayStart: zonedDateTimeToUtcIso(date, "00:00:00", "Europe/Lisbon"),
+    dayEnd: zonedDateTimeToUtcIso(date, "23:59:59", "Europe/Lisbon")
+  };
+}
+
+function zonedDateTimeToUtcIso(date: string, time: string, timeZone: string) {
+  const utcGuess = new Date(`${date}T${time}.000Z`);
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60000).toISOString();
+}
+
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset"
+  }).formatToParts(date);
+  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!match) return 0;
+
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2] ?? 0);
+  const minutes = Number(match[3] ?? 0);
+  return sign * (hours * 60 + minutes);
 }
