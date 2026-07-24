@@ -1,0 +1,74 @@
+import Link from "next/link";
+import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
+
+export const dynamic = "force-dynamic";
+
+const fictitiousCodes = ["001", "002", "003"];
+
+export default async function RemoveTestEmployeesPage() {
+  const result = await removeFictitiousEmployees();
+
+  return (
+    <main className="mx-auto grid min-h-screen max-w-2xl place-items-center px-6 py-12">
+      <section className="w-full rounded-lg border border-black/10 bg-white p-6 shadow-sm">
+        <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-moss">Limpeza administrativa</p>
+        <h1 className="text-3xl font-bold">Funcionarios ficticios removidos</h1>
+        <p className="mt-3 text-black/65">
+          Esta pagina remove apenas os codigos 001, 002 e 003. Funcionarios reais nao sao apagados por aqui.
+        </p>
+
+        <div className="mt-6 rounded-lg border border-black/10 bg-oat p-4">
+          {result.error ? (
+            <p className="font-semibold text-[#8b2f25]">{result.error}</p>
+          ) : result.removed.length ? (
+            <ul className="grid gap-2">
+              {result.removed.map((employee) => (
+                <li key={employee.id} className="font-semibold">
+                  {employee.code} - {employee.name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="font-semibold">Nenhum funcionario ficticio encontrado.</p>
+          )}
+        </div>
+
+        <Link
+          href="/admin"
+          className="focus-ring mt-6 inline-flex h-11 items-center rounded-md bg-moss px-4 font-semibold text-white"
+        >
+          Voltar ao admin
+        </Link>
+      </section>
+    </main>
+  );
+}
+
+async function removeFictitiousEmployees() {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: employees, error: findError } = await supabase
+      .from("employees")
+      .select("id, code, name")
+      .in("code", fictitiousCodes);
+
+    if (findError) {
+      return { removed: [], error: findError.message };
+    }
+
+    const ids = (employees ?? []).map((employee) => employee.id);
+    if (!ids.length) {
+      return { removed: [], error: "" };
+    }
+
+    const { error: deleteError } = await supabase.from("employees").delete().in("id", ids);
+
+    if (deleteError) {
+      return { removed: [], error: deleteError.message };
+    }
+
+    return { removed: employees ?? [], error: "" };
+  } catch (error) {
+    return { removed: [], error: error instanceof Error ? error.message : "Erro inesperado." };
+  }
+}
