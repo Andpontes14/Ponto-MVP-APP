@@ -162,8 +162,7 @@ async function loadDashboardData() {
   try {
     const supabase = getSupabaseAdmin();
     const today = getLisbonDateString();
-    const dayStart = `${today}T00:00:00+01:00`;
-    const dayEnd = `${today}T23:59:59+01:00`;
+    const { dayStart, dayEnd } = getLisbonDayRange(today);
 
     const [employeesResult, entriesResult, hourBankResult, vacationResult] = await Promise.all([
       supabase.from("employees").select("id, code, name, active").eq("active", true).order("code", { ascending: true }),
@@ -244,6 +243,34 @@ function getLisbonDateString() {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date());
+}
+
+function getLisbonDayRange(date: string) {
+  return {
+    dayStart: zonedDateTimeToUtcIso(date, "00:00:00", "Europe/Lisbon"),
+    dayEnd: zonedDateTimeToUtcIso(date, "23:59:59", "Europe/Lisbon")
+  };
+}
+
+function zonedDateTimeToUtcIso(date: string, time: string, timeZone: string) {
+  const utcGuess = new Date(`${date}T${time}.000Z`);
+  const offsetMinutes = getTimeZoneOffsetMinutes(utcGuess, timeZone);
+  return new Date(utcGuess.getTime() - offsetMinutes * 60000).toISOString();
+}
+
+function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "shortOffset"
+  }).formatToParts(date);
+  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!match) return 0;
+
+  const sign = match[1] === "+" ? 1 : -1;
+  const hours = Number(match[2] ?? 0);
+  const minutes = Number(match[3] ?? 0);
+  return sign * (hours * 60 + minutes);
 }
 
 function formatDate(date: string) {
