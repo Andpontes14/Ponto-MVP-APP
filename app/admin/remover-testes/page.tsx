@@ -4,6 +4,12 @@ import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 export const dynamic = "force-dynamic";
 
 const fictitiousCodes = ["001", "002", "003"];
+const fictitiousNames = ["Maria Silva", "Joao Costa", "Ana Martins"];
+const fictitiousIds = [
+  "10000000-0000-0000-0000-000000000001",
+  "10000000-0000-0000-0000-000000000002",
+  "10000000-0000-0000-0000-000000000003"
+];
 
 export default async function RemoveTestEmployeesPage() {
   const result = await removeFictitiousEmployees();
@@ -14,7 +20,7 @@ export default async function RemoveTestEmployeesPage() {
         <p className="mb-2 text-sm font-bold uppercase tracking-[0.18em] text-moss">Limpeza administrativa</p>
         <h1 className="text-3xl font-bold">Funcionarios ficticios removidos</h1>
         <p className="mt-3 text-black/65">
-          Esta pagina remove apenas os codigos 001, 002 e 003. Funcionarios reais nao sao apagados por aqui.
+          Esta pagina remove apenas os dados ficticios de teste. Funcionarios reais nao sao apagados por aqui.
         </p>
 
         <div className="mt-6 rounded-lg border border-black/10 bg-oat p-4">
@@ -50,15 +56,29 @@ async function removeFictitiousEmployees() {
     const { data: employees, error: findError } = await supabase
       .from("employees")
       .select("id, code, name")
-      .in("code", fictitiousCodes);
+      .order("code", { ascending: true });
 
     if (findError) {
       return { removed: [], error: findError.message };
     }
 
-    const ids = (employees ?? []).map((employee) => employee.id);
+    const matchedEmployees = (employees ?? []).filter(
+      (employee) =>
+        fictitiousCodes.includes(employee.code) ||
+        fictitiousNames.includes(employee.name) ||
+        fictitiousIds.includes(employee.id)
+    );
+    const ids = matchedEmployees.map((employee) => employee.id);
     if (!ids.length) {
       return { removed: [], error: "" };
+    }
+
+    const tables = ["hour_bank_transactions", "vacation_requests", "time_adjustments", "time_entries"];
+    for (const table of tables) {
+      const { error } = await supabase.from(table).delete().in("employee_id", ids);
+      if (error && table !== "time_adjustments") {
+        return { removed: [], error: error.message };
+      }
     }
 
     const { error: deleteError } = await supabase.from("employees").delete().in("id", ids);
@@ -67,7 +87,7 @@ async function removeFictitiousEmployees() {
       return { removed: [], error: deleteError.message };
     }
 
-    return { removed: employees ?? [], error: "" };
+    return { removed: matchedEmployees, error: "" };
   } catch (error) {
     return { removed: [], error: error instanceof Error ? error.message : "Erro inesperado." };
   }
