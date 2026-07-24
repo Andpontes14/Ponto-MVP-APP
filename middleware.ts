@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const protectedPages = ["/", "/admin"];
-const protectedApiPrefixes = ["/api/hour-bank", "/api/vacations/"];
+const protectedApiPrefixes = ["/api/hour-bank", "/api/vacations/", "/api/reports"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,7 +9,8 @@ export function middleware(request: NextRequest) {
     protectedPages.includes(pathname) || protectedPages.some((path) => path !== "/" && pathname.startsWith(`${path}/`));
   const isProtectedEmployeeWrite =
     pathname.startsWith("/api/employees") && request.method !== "GET";
-  const isProtectedApi = protectedApiPrefixes.some((path) => pathname.startsWith(path));
+  const isProtectedApi =
+    pathname === "/api/hour-bank" || protectedApiPrefixes.some((path) => pathname.startsWith(path));
 
   if (!isProtectedPage && !isProtectedEmployeeWrite && !isProtectedApi) {
     return NextResponse.next();
@@ -48,5 +49,5 @@ function isAuthorized(authorization: string | null, username: string, password: 
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/api/employees/:path*", "/api/hour-bank/:path*", "/api/vacations/:path*"]
+  matcher: ["/", "/admin/:path*", "/api/employees/:path*", "/api/hour-bank/:path*", "/api/vacations/:path*", "/api/reports/:path*"]
 };
