@@ -10,6 +10,18 @@ const fictitiousIds = [
   "10000000-0000-0000-0000-000000000002",
   "10000000-0000-0000-0000-000000000003"
 ];
+const fictitiousHourBankNotes = [
+  "Pagamento de horas extras",
+  "Folga excepcional",
+  "Pagar 2h no fechamento mensal",
+  "Saiu 1h mais cedo por folga excepcional",
+  "Extras acumuladas da semana anterior",
+  "Horas extra mantidas em banco"
+];
+const fictitiousVacationRanges = [
+  { start: "2026-08-10", end: "2026-08-14" },
+  { start: "2026-09-07", end: "2026-09-11" }
+];
 
 export default async function RemoveTestEmployeesPage() {
   const result = await removeFictitiousEmployees();
@@ -69,6 +81,16 @@ async function removeFictitiousEmployees() {
         fictitiousIds.includes(employee.id)
     );
     const ids = matchedEmployees.map((employee) => employee.id);
+
+    await supabase.from("hour_bank_transactions").delete().in("note", fictitiousHourBankNotes);
+    for (const range of fictitiousVacationRanges) {
+      await supabase
+        .from("vacation_requests")
+        .delete()
+        .eq("start_date", range.start)
+        .eq("end_date", range.end);
+    }
+
     if (!ids.length) {
       return { removed: [], error: "" };
     }
