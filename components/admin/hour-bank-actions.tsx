@@ -39,12 +39,13 @@ export function HourBankActions({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action })
       });
-      const result = await response.json();
+      const result = await readResponse(response);
       if (!response.ok) {
         window.alert(result.error ?? "Nao foi possivel atualizar o movimento.");
         return;
       }
       router.refresh();
+      window.setTimeout(() => window.location.reload(), 250);
     } catch {
       window.alert("Erro de comunicacao ao atualizar movimento.");
     } finally {
@@ -93,12 +94,13 @@ export function HourBankActions({
           note
         })
       });
-      const result = await response.json();
+      const result = await readResponse(response);
       if (!response.ok) {
         window.alert(result.error ?? "Nao foi possivel criar a baixa.");
         return;
       }
       router.refresh();
+      window.setTimeout(() => window.location.reload(), 250);
     } catch {
       window.alert("Erro de comunicacao ao criar baixa.");
     } finally {
@@ -130,6 +132,17 @@ export function HourBankActions({
       Sem acao
     </span>
   );
+}
+
+async function readResponse(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    return { error: text };
+  }
 }
 
 function ActionButton({
