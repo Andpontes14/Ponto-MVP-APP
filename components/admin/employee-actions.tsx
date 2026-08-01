@@ -1,28 +1,19 @@
-"use client";
-
 import { UserMinus, UserRoundCheck } from "lucide-react";
-import type { FormEvent } from "react";
+import { setEmployeeActive } from "@/app/admin/actions";
 
 export function EmployeeActions({
   employeeId,
-  active,
-  employeeName
+  active
 }: {
   employeeId: string;
   active: boolean;
   employeeName: string;
 }) {
   const nextActive = !active;
-  const action = active ? "desativar" : "reativar";
-
-  function confirmSubmit(event: FormEvent<HTMLFormElement>) {
-    if (!window.confirm(`Confirmar ${action} ${employeeName}?`)) {
-      event.preventDefault();
-    }
-  }
 
   return (
-    <form action={`/api/employees/${employeeId}`} method="post" onSubmit={confirmSubmit}>
+    <form action={setEmployeeActive}>
+      <input type="hidden" name="employeeId" value={employeeId} />
       <input type="hidden" name="active" value={String(nextActive)} />
       <button
         type="submit"
