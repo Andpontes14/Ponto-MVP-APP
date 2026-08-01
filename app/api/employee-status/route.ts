@@ -136,20 +136,15 @@ function buildTimeDays(entries: TimeEntryRow[]) {
       const ordered = [...dateEntries].sort(
         (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
       );
-      const byType = Object.fromEntries(ordered.map((entry) => [entry.type, entry.occurred_at]));
+      const byType = getDayMarks(ordered);
       const hasReview = ordered.some((entry) => entry.verification_status === "rever");
       const flags = ordered.flatMap((entry) => entry.verification_flags ?? []);
-      let workedMinutes = 0;
+      const workedMinutes = calculateWorkedMinutes(ordered);
       let issue = "";
 
-      if (byType.entrada && byType.saida) {
-        workedMinutes = diffMinutes(byType.entrada, byType.saida);
-        if (byType.inicio_pausa && byType.fim_pausa) {
-          workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
-        }
-      } else if (ordered.length > 0 && !byType.entrada) {
+      if (ordered.length > 0 && !byType.entrada) {
         issue = "Sem entrada";
-      } else if (byType.entrada && byType.inicio_pausa && !byType.fim_pausa) {
+      } else if (byType.entrada && hasOpenPause(ordered)) {
         issue = "Pausa aberta";
       } else if (byType.entrada && !byType.saida) {
         issue = "Em curso";
@@ -167,6 +162,41 @@ function buildTimeDays(entries: TimeEntryRow[]) {
         issue
       };
     });
+}
+
+function getDayMarks(entries: TimeEntryRow[]) {
+  return {
+    entrada: entries.find((entry) => entry.type === "entrada")?.occurred_at ?? null,
+    inicio_pausa: entries.filter((entry) => entry.type === "inicio_pausa")[0]?.occurred_at ?? null,
+    fim_pausa: entries.filter((entry) => entry.type === "fim_pausa")[0]?.occurred_at ?? null,
+    saida: [...entries].reverse().find((entry) => entry.type === "saida")?.occurred_at ?? null
+  };
+}
+
+function hasOpenPause(entries: TimeEntryRow[]) {
+  const starts = entries.filter((entry) => entry.type === "inicio_pausa").length;
+  const ends = entries.filter((entry) => entry.type === "fim_pausa").length;
+  return starts > ends;
+}
+
+function calculateWorkedMinutes(entries: TimeEntryRow[]) {
+  const entrada = entries.find((entry) => entry.type === "entrada")?.occurred_at;
+  const saida = [...entries].reverse().find((entry) => entry.type === "saida")?.occurred_at;
+  if (!entrada || !saida) return 0;
+
+  let workedMinutes = diffMinutes(entrada, saida);
+  let pauseStart: string | null = null;
+
+  for (const entry of entries) {
+    if (entry.type === "inicio_pausa" && !pauseStart) {
+      pauseStart = entry.occurred_at;
+    } else if (entry.type === "fim_pausa" && pauseStart) {
+      workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
+      pauseStart = null;
+    }
+  }
+
+  return Math.max(0, workedMinutes);
 }
 
 function sortVacations(requests: VacationRow[]) {
