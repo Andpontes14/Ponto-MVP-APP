@@ -144,13 +144,8 @@ async function createPendingOvertimeCredit(
 
   if (error || !entries?.length) return 0;
 
-  const byType = Object.fromEntries(entries.map((entry) => [entry.type, entry.occurred_at]));
-  if (!byType.entrada || !byType.saida) return 0;
-
-  let workedMinutes = diffMinutes(byType.entrada, byType.saida);
-  if (byType.inicio_pausa && byType.fim_pausa) {
-    workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
-  }
+  const workedMinutes = calculateWorkedMinutes(entries);
+  if (workedMinutes <= 0) return 0;
 
   const overtimeMinutes = Math.max(0, workedMinutes - 480);
   if (overtimeMinutes <= 0) return 0;
@@ -178,29 +173,75 @@ async function createPendingOvertimeCredit(
 }
 
 function validateSequence(type: TimeEntryType, entries: { type: TimeEntryType; occurred_at: string }[]) {
-  const types = new Set(entries.map((entry) => entry.type));
+  const counts = entries.reduce(
+    (totals, entry) => {
+      totals[entry.type] += 1;
+      return totals;
+    },
+    { entrada: 0, inicio_pausa: 0, fim_pausa: 0, saida: 0 } satisfies Record<TimeEntryType, number>
+  );
+  const hasOpenPause = counts.inicio_pausa > counts.fim_pausa;
 
-  if (types.has(type)) {
-    return "Esta marcacao ja foi registada hoje.";
+  if (type === "entrada" && counts.entrada >= 1) {
+    return "A entrada ja foi registada hoje.";
   }
 
-  if (type !== "entrada" && !types.has("entrada")) {
+  if (type === "saida" && counts.saida >= 1) {
+    return "A saida ja foi registada hoje.";
+  }
+
+  if (type !== "entrada" && counts.entrada === 0) {
     return "Registe a entrada antes das outras marcacoes.";
   }
 
-  if (type === "fim_pausa" && !types.has("inicio_pausa")) {
+  if (type === "inicio_pausa" && counts.inicio_pausa >= 2) {
+    return "O limite de duas pausas no dia ja foi atingido.";
+  }
+
+  if (type === "fim_pausa" && counts.fim_pausa >= 2) {
+    return "O limite de duas pausas no dia ja foi atingido.";
+  }
+
+  if (type === "inicio_pausa" && hasOpenPause) {
+    return "Feche a pausa atual antes de iniciar outra pausa.";
+  }
+
+  if (type === "fim_pausa" && !hasOpenPause) {
     return "Registe o inicio da pausa antes do fim da pausa.";
   }
 
-  if (type === "saida" && types.has("inicio_pausa") && !types.has("fim_pausa")) {
+  if (type === "saida" && hasOpenPause) {
     return "Feche a pausa antes de registar a saida.";
   }
 
-  if ((type === "inicio_pausa" || type === "fim_pausa") && types.has("saida")) {
+  if ((type === "inicio_pausa" || type === "fim_pausa") && counts.saida > 0) {
     return "A jornada ja foi fechada com saida.";
   }
 
   return "";
+}
+
+function calculateWorkedMinutes(entries: { type: TimeEntryType; occurred_at: string }[]) {
+  const ordered = [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  );
+  const entrada = ordered.find((entry) => entry.type === "entrada")?.occurred_at;
+  const saida = [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at;
+  if (!entrada || !saida) return 0;
+
+  let workedMinutes = diffMinutes(entrada, saida);
+  let pauseStart: string | null = null;
+
+  for (const entry of ordered) {
+    if (entry.type === "inicio_pausa" && !pauseStart) {
+      pauseStart = entry.occurred_at;
+    } else if (entry.type === "fim_pausa" && pauseStart) {
+      workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
+      pauseStart = null;
+    }
+  }
+
+  return Math.max(0, workedMinutes);
 }
 
 function diffMinutes(start: string, end: string) {
