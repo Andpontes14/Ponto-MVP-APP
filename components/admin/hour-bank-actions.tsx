@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, Clock, CreditCard, Umbrella, X } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import type { FormEvent } from "react";
+import { useRef, useState } from "react";
 
 type TransactionType = "credito_extra" | "pagamento" | "folga" | "ajuste";
 type TransactionStatus = "pendente" | "aprovado" | "recusado";
@@ -24,36 +24,23 @@ export function HourBankActions({
   minutes: number;
   balanceMinutes: number;
 }) {
-  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const debitFormRef = useRef<HTMLFormElement>(null);
+  const debitTypeRef = useRef<HTMLInputElement>(null);
+  const debitMinutesRef = useRef<HTMLInputElement>(null);
+  const debitNoteRef = useRef<HTMLInputElement>(null);
 
-  async function updateTransaction(action: "aprovar" | "recusar") {
+  function confirmDecision(event: FormEvent<HTMLFormElement>, action: "aprovar" | "recusar") {
     const label = action === "aprovar" ? "aprovar" : "recusar";
-    if (!window.confirm(`Confirmar ${label} este movimento de ${employeeName}?`)) return;
+    if (!window.confirm(`Confirmar ${label} este movimento de ${employeeName}?`)) {
+      event.preventDefault();
+      return;
+    }
 
     setIsSubmitting(true);
-    try {
-      const response = await fetch(`/api/hour-bank/${transactionId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action })
-      });
-      const result = await readResponse(response);
-      if (!response.ok) {
-        window.alert(result.error ?? "Nao foi possivel atualizar o movimento.");
-        return;
-      }
-      router.refresh();
-      window.setTimeout(() => window.location.reload(), 250);
-    } catch {
-      window.alert("Erro de comunicacao ao atualizar movimento.");
-    } finally {
-      setIsSubmitting(false);
-    }
   }
 
-  async function createDebit(debitType: "pagamento" | "folga") {
+  function createDebit(debitType: "pagamento" | "folga") {
     const label = debitType === "pagamento" ? "pagamento" : "folga";
     const hoursText = window.prompt(`Quantas horas deseja abater por ${label}? Exemplo: 1.5`);
     if (!hoursText) return;
@@ -81,48 +68,63 @@ export function HourBankActions({
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      const response = await fetch("/api/hour-bank", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId,
-          type: debitType,
-          minutes: minutesToDebit,
-          note
-        })
-      });
-      const result = await readResponse(response);
-      if (!response.ok) {
-        window.alert(result.error ?? "Nao foi possivel criar a baixa.");
-        return;
-      }
-      router.refresh();
-      window.setTimeout(() => window.location.reload(), 250);
-    } catch {
-      window.alert("Erro de comunicacao ao criar baixa.");
-    } finally {
-      setIsSubmitting(false);
+    if (!debitFormRef.current || !debitTypeRef.current || !debitMinutesRef.current || !debitNoteRef.current) {
+      window.alert("Formulario de baixa indisponivel. Recarregue a pagina e tente novamente.");
+      return;
     }
+
+    debitTypeRef.current.value = debitType;
+    debitMinutesRef.current.value = String(minutesToDebit);
+    debitNoteRef.current.value = note.trim();
+    setIsSubmitting(true);
+    debitFormRef.current.requestSubmit();
   }
+
+  const debitForm = (
+    <form ref={debitFormRef} action="/api/hour-bank" method="post" className="hidden">
+      <input type="hidden" name="employeeId" value={employeeId} />
+      <input ref={debitTypeRef} type="hidden" name="type" />
+      <input ref={debitMinutesRef} type="hidden" name="minutes" />
+      <input ref={debitNoteRef} type="hidden" name="note" />
+    </form>
+  );
 
   if (status === "pendente") {
     return (
-      <div className="flex flex-wrap gap-2">
-        <ActionButton disabled={isSubmitting} onClick={() => updateTransaction("aprovar")} icon={Check} label="Aprovar" tone="primary" />
-        <ActionButton disabled={isSubmitting} onClick={() => updateTransaction("recusar")} icon={X} label="Recusar" />
-      </div>
+      <>
+        {debitForm}
+        <div className="flex flex-wrap gap-2">
+          <DecisionForm
+            action="aprovar"
+            disabled={isSubmitting}
+            icon={Check}
+            label="Aprovar"
+            onSubmit={(event) => confirmDecision(event, "aprovar")}
+            tone="primary"
+            transactionId={transactionId}
+          />
+          <DecisionForm
+            action="recusar"
+            disabled={isSubmitting}
+            icon={X}
+            label="Recusar"
+            onSubmit={(event) => confirmDecision(event, "recusar")}
+            transactionId={transactionId}
+          />
+        </div>
+      </>
     );
   }
 
   if (status === "aprovado" && type === "credito_extra" && minutes > 0 && balanceMinutes > 0) {
     return (
-      <div className="flex flex-wrap gap-2">
-        <ActionButton disabled={isSubmitting} onClick={() => createDebit("pagamento")} icon={CreditCard} label="Pagar" tone="primary" />
-        <ActionButton disabled={isSubmitting} onClick={() => createDebit("folga")} icon={Umbrella} label="Folga" />
-      </div>
+      <>
+        {debitForm}
+        <div className="flex flex-wrap gap-2">
+          <ActionButton disabled={isSubmitting} onClick={() => createDebit("pagamento")} icon={CreditCard} label="Pagar" tone="primary" />
+          <ActionButton disabled={isSubmitting} onClick={() => createDebit("folga")} icon={Umbrella} label="Folga" />
+        </div>
+      </>
     );
   }
 
@@ -132,17 +134,6 @@ export function HourBankActions({
       Sem acao
     </span>
   );
-}
-
-async function readResponse(response: Response) {
-  const text = await response.text();
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text) as { error?: string };
-  } catch {
-    return { error: text };
-  }
 }
 
 function ActionButton({
@@ -170,5 +161,39 @@ function ActionButton({
       <Icon size={15} />
       {label}
     </button>
+  );
+}
+
+function DecisionForm({
+  action,
+  disabled,
+  icon: Icon,
+  label,
+  onSubmit,
+  tone = "neutral",
+  transactionId
+}: {
+  action: "aprovar" | "recusar";
+  disabled: boolean;
+  icon: typeof Check;
+  label: string;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  tone?: "primary" | "neutral";
+  transactionId: string;
+}) {
+  return (
+    <form action={`/api/hour-bank/${transactionId}`} method="post" onSubmit={onSubmit}>
+      <input type="hidden" name="action" value={action} />
+      <button
+        type="submit"
+        disabled={disabled}
+        className={`focus-ring inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+          tone === "primary" ? "bg-moss text-white" : "border border-black/15 bg-white text-ink"
+        }`}
+      >
+        <Icon size={15} />
+        {label}
+      </button>
+    </form>
   );
 }
