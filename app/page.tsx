@@ -205,19 +205,14 @@ async function loadDashboardData() {
 function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): DailySummary[] {
   return employees.map((employee) => {
     const employeeEntries = entries.filter((entry) => entry.employee_id === employee.id);
-    const byType = Object.fromEntries(employeeEntries.map((entry) => [entry.type, entry.occurred_at]));
+    const byType = getDayMarks(employeeEntries);
     const hasReview = employeeEntries.some((entry) => entry.verification_status === "rever");
-    let workedMinutes = 0;
+    const workedMinutes = calculateWorkedMinutes(employeeEntries);
     let issue: string | undefined;
 
-    if (byType.entrada && byType.saida) {
-      workedMinutes = diffMinutes(byType.entrada, byType.saida);
-      if (byType.inicio_pausa && byType.fim_pausa) {
-        workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
-      }
-    } else if (employeeEntries.length > 0 && !byType.entrada) {
+    if (employeeEntries.length > 0 && !byType.entrada) {
       issue = "Sem entrada";
-    } else if (byType.entrada && byType.inicio_pausa && !byType.fim_pausa) {
+    } else if (byType.entrada && hasOpenPause(employeeEntries)) {
       issue = "Pausa aberta";
     }
 
@@ -234,6 +229,48 @@ function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): Dail
       issue
     };
   });
+}
+
+function getDayMarks(entries: TimeEntryRow[]) {
+  const ordered = [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  );
+
+  return {
+    entrada: ordered.find((entry) => entry.type === "entrada")?.occurred_at,
+    inicio_pausa: ordered.filter((entry) => entry.type === "inicio_pausa")[0]?.occurred_at,
+    fim_pausa: ordered.filter((entry) => entry.type === "fim_pausa")[0]?.occurred_at,
+    saida: [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at
+  };
+}
+
+function hasOpenPause(entries: TimeEntryRow[]) {
+  const starts = entries.filter((entry) => entry.type === "inicio_pausa").length;
+  const ends = entries.filter((entry) => entry.type === "fim_pausa").length;
+  return starts > ends;
+}
+
+function calculateWorkedMinutes(entries: TimeEntryRow[]) {
+  const ordered = [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  );
+  const entrada = ordered.find((entry) => entry.type === "entrada")?.occurred_at;
+  const saida = [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at;
+  if (!entrada || !saida) return 0;
+
+  let workedMinutes = diffMinutes(entrada, saida);
+  let pauseStart: string | null = null;
+
+  for (const entry of ordered) {
+    if (entry.type === "inicio_pausa" && !pauseStart) {
+      pauseStart = entry.occurred_at;
+    } else if (entry.type === "fim_pausa" && pauseStart) {
+      workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
+      pauseStart = null;
+    }
+  }
+
+  return Math.max(0, workedMinutes);
 }
 
 function getLisbonDateString() {
