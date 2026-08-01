@@ -32,7 +32,7 @@ export function EmployeeActions({
         },
         body: JSON.stringify({ active: nextActive })
       });
-      const result = await response.json();
+      const result = await readResponse(response);
 
       if (!response.ok) {
         window.alert(result.error ?? "Nao foi possivel atualizar funcionario.");
@@ -40,6 +40,7 @@ export function EmployeeActions({
       }
 
       router.refresh();
+      window.setTimeout(() => window.location.reload(), 250);
     } catch {
       window.alert("Erro de comunicacao ao atualizar funcionario.");
     } finally {
@@ -58,4 +59,15 @@ export function EmployeeActions({
       {active ? "Desativar" : "Reativar"}
     </button>
   );
+}
+
+async function readResponse(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    return { error: text };
+  }
 }
