@@ -453,17 +453,9 @@ function sortVacationRequests(requests: VacationRow[]) {
 function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): DailySummary[] {
   return employees.map((employee) => {
     const employeeEntries = entries.filter((entry) => entry.employee_id === employee.id);
-    const byType = Object.fromEntries(employeeEntries.map((entry) => [entry.type, entry.occurred_at]));
     const flags = employeeEntries.flatMap((entry) => entry.verification_flags ?? []);
     const hasReview = employeeEntries.some((entry) => entry.verification_status === "rever");
-    let workedMinutes = 0;
-
-    if (byType.entrada && byType.saida) {
-      workedMinutes = diffMinutes(byType.entrada, byType.saida);
-      if (byType.inicio_pausa && byType.fim_pausa) {
-        workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
-      }
-    }
+    const workedMinutes = calculateWorkedMinutes(employeeEntries);
 
     return {
       employeeId: employee.id,
@@ -473,6 +465,29 @@ function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): Dail
       verificationFlags: flags
     };
   });
+}
+
+function calculateWorkedMinutes(entries: TimeEntryRow[]) {
+  const ordered = [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  );
+  const entrada = ordered.find((entry) => entry.type === "entrada")?.occurred_at;
+  const saida = [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at;
+  if (!entrada || !saida) return 0;
+
+  let workedMinutes = diffMinutes(entrada, saida);
+  let pauseStart: string | null = null;
+
+  for (const entry of ordered) {
+    if (entry.type === "inicio_pausa" && !pauseStart) {
+      pauseStart = entry.occurred_at;
+    } else if (entry.type === "fim_pausa" && pauseStart) {
+      workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
+      pauseStart = null;
+    }
+  }
+
+  return Math.max(0, workedMinutes);
 }
 
 function buildHourBankBalances(employees: EmployeeRow[], transactions: HourBankRow[]) {
