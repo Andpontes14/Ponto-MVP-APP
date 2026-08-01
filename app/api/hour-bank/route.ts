@@ -7,28 +7,31 @@ type DebitType = "pagamento" | "folga";
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json();
+    const contentType = request.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json")
+      ? await request.json()
+      : Object.fromEntries(await request.formData());
     const employeeId = String(payload.employeeId ?? "").trim();
     const type = String(payload.type ?? "").trim() as DebitType;
     const minutes = Number(payload.minutes ?? 0);
     const note = String(payload.note ?? "").trim();
 
     if (!employeeId || !["pagamento", "folga"].includes(type)) {
-      return NextResponse.json({ error: "Funcionario e tipo de baixa sao obrigatorios." }, { status: 400 });
+      return respondWithError(request, "Funcionario e tipo de baixa sao obrigatorios.", 400, contentType);
     }
 
     if (!Number.isInteger(minutes) || minutes <= 0) {
-      return NextResponse.json({ error: "Informe uma quantidade valida de minutos." }, { status: 400 });
+      return respondWithError(request, "Informe uma quantidade valida de minutos.", 400, contentType);
     }
 
     if (!note) {
-      return NextResponse.json({ error: "Informe uma observacao para o movimento." }, { status: 400 });
+      return respondWithError(request, "Informe uma observacao para o movimento.", 400, contentType);
     }
 
     const supabase = getSupabaseAdmin();
     const balance = await getApprovedBalance(supabase, employeeId);
     if (minutes > balance) {
-      return NextResponse.json({ error: "Saldo insuficiente no banco de horas." }, { status: 400 });
+      return respondWithError(request, "Saldo insuficiente no banco de horas.", 400, contentType);
     }
 
     const { data, error } = await supabase
@@ -45,7 +48,11 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return respondWithError(request, error.message, 500, contentType);
+    }
+
+    if (!contentType.includes("application/json")) {
+      return NextResponse.redirect(new URL("/admin?ok=banco-horas", request.url));
     }
 
     return NextResponse.json({ ok: true, transaction: data });
@@ -53,6 +60,14 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Erro inesperado.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function respondWithError(request: Request, message: string, status: number, contentType: string) {
+  if (!contentType.includes("application/json")) {
+    return NextResponse.redirect(new URL(`/admin?erro=${encodeURIComponent(message)}`, request.url));
+  }
+
+  return NextResponse.json({ error: message }, { status });
 }
 
 async function getApprovedBalance(supabase: ReturnType<typeof getSupabaseAdmin>, employeeId: string) {
