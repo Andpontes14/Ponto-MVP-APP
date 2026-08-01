@@ -60,8 +60,10 @@ function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow
       "Funcionario",
       "Funcao",
       "Entrada",
-      "Inicio pausa",
-      "Fim pausa",
+      "Inicio pausa 1",
+      "Fim pausa 1",
+      "Inicio pausa 2",
+      "Fim pausa 2",
       "Saida",
       "Horas liquidas",
       "Horas extra",
@@ -75,9 +77,9 @@ function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow
 
     for (const date of dates) {
       const dateEntries = employeeEntries.filter((entry) => getLisbonDateString(new Date(entry.occurred_at)) === date);
-      const byType = Object.fromEntries(dateEntries.map((entry) => [entry.type, entry.occurred_at]));
-      const workedMinutes = byType.entrada && byType.saida ? calculateWorkedMinutes(byType) : 0;
-      const status = byType.entrada && byType.saida ? "Completo" : byType.entrada ? "Em curso" : "Incompleto";
+      const marks = getDayMarks(dateEntries);
+      const workedMinutes = marks.entrada && marks.saida ? calculateWorkedMinutes(dateEntries) : 0;
+      const status = marks.entrada && marks.saida ? "Completo" : marks.entrada ? "Em curso" : "Incompleto";
 
       rows.push([
         month,
@@ -85,10 +87,12 @@ function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow
         employee.code,
         employee.name,
         employee.role,
-        formatTime(byType.entrada),
-        formatTime(byType.inicio_pausa),
-        formatTime(byType.fim_pausa),
-        formatTime(byType.saida),
+        formatTime(marks.entrada),
+        formatTime(marks.pauseStarts[0]),
+        formatTime(marks.pauseEnds[0]),
+        formatTime(marks.pauseStarts[1]),
+        formatTime(marks.pauseEnds[1]),
+        formatTime(marks.saida),
         minutesToHours(workedMinutes),
         minutesToHours(Math.max(0, workedMinutes - 480)),
         status
@@ -99,12 +103,38 @@ function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow
   return rows.map((row) => row.map(escapeCsv).join(";")).join("\n");
 }
 
-function calculateWorkedMinutes(byType: Record<string, string>) {
-  let workedMinutes = diffMinutes(byType.entrada, byType.saida);
-  if (byType.inicio_pausa && byType.fim_pausa) {
-    workedMinutes -= diffMinutes(byType.inicio_pausa, byType.fim_pausa);
+function getDayMarks(entries: TimeEntryRow[]) {
+  const ordered = [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  );
+
+  return {
+    entrada: ordered.find((entry) => entry.type === "entrada")?.occurred_at,
+    pauseStarts: ordered.filter((entry) => entry.type === "inicio_pausa").map((entry) => entry.occurred_at),
+    pauseEnds: ordered.filter((entry) => entry.type === "fim_pausa").map((entry) => entry.occurred_at),
+    saida: [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at
+  };
+}
+
+function calculateWorkedMinutes(entries: TimeEntryRow[]) {
+  const marks = getDayMarks(entries);
+  if (!marks.entrada || !marks.saida) return 0;
+
+  let workedMinutes = diffMinutes(marks.entrada, marks.saida);
+  let pauseStart: string | null = null;
+
+  for (const entry of [...entries].sort(
+    (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
+  )) {
+    if (entry.type === "inicio_pausa" && !pauseStart) {
+      pauseStart = entry.occurred_at;
+    } else if (entry.type === "fim_pausa" && pauseStart) {
+      workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
+      pauseStart = null;
+    }
   }
-  return workedMinutes;
+
+  return Math.max(0, workedMinutes);
 }
 
 function getLisbonMonthString() {
