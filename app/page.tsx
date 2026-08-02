@@ -1,4 +1,5 @@
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, TimerReset, UsersRound } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, CalendarClock, Camera, CheckCircle2, Clock, TimerReset, UsersRound } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -16,6 +17,7 @@ type TimeEntryRow = {
   occurred_at: string;
   verification_status: "pendente" | "confirmado" | "rever";
   verification_flags: string[] | null;
+  photo_path: string | null;
 };
 
 type HourBankRow = {
@@ -32,9 +34,12 @@ type DailySummary = {
   employeeId: string;
   employeeName: string;
   entrada?: string;
-  inicioPausa?: string;
-  fimPausa?: string;
+  pausa1Inicio?: string;
+  pausa1Fim?: string;
+  pausa2Inicio?: string;
+  pausa2Fim?: string;
   saida?: string;
+  hasPhoto: boolean;
   workedMinutes: number;
   overtimeMinutes: number;
   verificationStatus: "confirmado" | "rever";
@@ -94,18 +99,19 @@ export default async function DashboardPage() {
           ) : null}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
             <thead className="bg-oat text-xs uppercase text-black/60">
               <tr>
                 <th className="px-4 py-3">Funcionario</th>
                 <th className="px-4 py-3">Entrada</th>
-                <th className="px-4 py-3">Inicio pausa</th>
-                <th className="px-4 py-3">Fim pausa</th>
+                <th className="px-4 py-3">Pausa 1</th>
+                <th className="px-4 py-3">Pausa 2</th>
                 <th className="px-4 py-3">Saida</th>
                 <th className="px-4 py-3">Total</th>
                 <th className="px-4 py-3">Extra</th>
                 <th className="px-4 py-3">Validacao</th>
                 <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Fotos</th>
               </tr>
             </thead>
             <tbody>
@@ -113,8 +119,12 @@ export default async function DashboardPage() {
                 <tr key={summary.employeeId} className="border-t border-black/10">
                   <td className="px-4 py-3 font-semibold">{summary.employeeName}</td>
                   <td className="px-4 py-3">{formatTime(summary.entrada)}</td>
-                  <td className="px-4 py-3">{formatTime(summary.inicioPausa)}</td>
-                  <td className="px-4 py-3">{formatTime(summary.fimPausa)}</td>
+                  <td className="px-4 py-3">
+                    {formatTimeRange(summary.pausa1Inicio, summary.pausa1Fim)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatTimeRange(summary.pausa2Inicio, summary.pausa2Fim)}
+                  </td>
                   <td className="px-4 py-3">{formatTime(summary.saida)}</td>
                   <td className="px-4 py-3 font-semibold">{minutesToHours(summary.workedMinutes)}</td>
                   <td className="px-4 py-3 font-semibold">{minutesToHours(summary.overtimeMinutes)}</td>
@@ -131,7 +141,7 @@ export default async function DashboardPage() {
                   </td>
                   <td className="px-4 py-3">
                     {summary.issue ? (
-                      <span className="rounded-md bg-[#fff2d8] px-2 py-1 text-xs font-semibold text-[#725018]">
+                      <span className="rounded-md bg-[#fde8e8] px-2 py-1 text-xs font-semibold text-[#9b1c1c]">
                         {summary.issue}
                       </span>
                     ) : summary.entrada && summary.saida ? (
@@ -146,6 +156,19 @@ export default async function DashboardPage() {
                       <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold text-black/60">
                         Sem marcacao
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {summary.hasPhoto ? (
+                      <Link
+                        href={`/admin/fotos?employeeId=${summary.employeeId}`}
+                        className="focus-ring inline-flex items-center gap-1 rounded-md border border-black/15 px-2 py-1 text-xs font-semibold hover:bg-oat"
+                      >
+                        <Camera size={14} />
+                        Ver
+                      </Link>
+                    ) : (
+                      <span className="text-black/40">-</span>
                     )}
                   </td>
                 </tr>
@@ -168,7 +191,7 @@ async function loadDashboardData() {
       supabase.from("employees").select("id, code, name, active").eq("active", true).order("code", { ascending: true }),
       supabase
         .from("time_entries")
-        .select("employee_id, type, occurred_at, verification_status, verification_flags")
+        .select("employee_id, type, occurred_at, verification_status, verification_flags, photo_path")
         .gte("occurred_at", dayStart)
         .lte("occurred_at", dayEnd)
         .order("occurred_at", { ascending: true }),
@@ -220,9 +243,12 @@ function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): Dail
       employeeId: employee.id,
       employeeName: employee.name,
       entrada: byType.entrada,
-      inicioPausa: byType.inicio_pausa,
-      fimPausa: byType.fim_pausa,
+      pausa1Inicio: byType.pauses[0]?.inicio,
+      pausa1Fim: byType.pauses[0]?.fim,
+      pausa2Inicio: byType.pauses[1]?.inicio,
+      pausa2Fim: byType.pauses[1]?.fim,
       saida: byType.saida,
+      hasPhoto: employeeEntries.some((entry) => Boolean(entry.photo_path)),
       workedMinutes,
       overtimeMinutes: Math.max(0, workedMinutes - 480),
       verificationStatus: hasReview ? "rever" : "confirmado",
@@ -236,10 +262,15 @@ function getDayMarks(entries: TimeEntryRow[]) {
     (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
   );
 
+  const starts = ordered.filter((entry) => entry.type === "inicio_pausa");
+  const ends = ordered.filter((entry) => entry.type === "fim_pausa");
+
   return {
     entrada: ordered.find((entry) => entry.type === "entrada")?.occurred_at,
-    inicio_pausa: ordered.filter((entry) => entry.type === "inicio_pausa")[0]?.occurred_at,
-    fim_pausa: ordered.filter((entry) => entry.type === "fim_pausa")[0]?.occurred_at,
+    pauses: [0, 1].map((index) => ({
+      inicio: starts[index]?.occurred_at,
+      fim: ends[index]?.occurred_at
+    })),
     saida: [...ordered].reverse().find((entry) => entry.type === "saida")?.occurred_at
   };
 }
@@ -325,6 +356,11 @@ function formatTime(dateTime?: string) {
     minute: "2-digit",
     timeZone: "Europe/Lisbon"
   }).format(new Date(dateTime));
+}
+
+function formatTimeRange(start?: string, end?: string) {
+  if (!start && !end) return "-";
+  return `${formatTime(start)} - ${formatTime(end)}`;
 }
 
 function minutesToHours(minutes: number) {
