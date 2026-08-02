@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, CheckCircle2, Coffee, LogIn, LogOut, Pause, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Coffee, LogIn, LogOut, Pause, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import type { TimeEntryType } from "@/lib/types";
@@ -11,6 +11,19 @@ type TabletEmployee = {
   name: string;
   role: string;
 };
+
+type MessageTone = "info" | "success" | "error" | "warning";
+
+type OfflineEntry = {
+  id: string;
+  code: string;
+  employeeName: string;
+  type: TimeEntryType;
+  attemptedAt: string;
+  photoPending: boolean;
+};
+
+const offlineStorageKey = "ponto-offline-entries";
 
 const actions: { type: TimeEntryType; label: string; icon: typeof LogIn }[] = [
   { type: "entrada", label: "Entrada", icon: LogIn },
@@ -26,28 +39,32 @@ export default function TabletPage() {
   const [photoName, setPhotoName] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [message, setMessage] = useState("A carregar funcionarios...");
+  const [messageTone, setMessageTone] = useState<MessageTone>("info");
+  const [offlineEntries, setOfflineEntries] = useState<OfflineEntry[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
 
   const employee = useMemo(() => employees.find((item) => item.code === code), [employees, code]);
 
   useEffect(() => {
+    setOfflineEntries(loadOfflineEntries());
+
     async function loadEmployees() {
       try {
         const response = await fetch("/api/employees", { cache: "no-store" });
         const result = await response.json();
 
         if (!response.ok) {
-          setMessage(result.error ?? "Nao foi possivel carregar funcionarios.");
+          showMessage(result.error ?? "Nao foi possivel carregar funcionarios.", "error");
           return;
         }
 
         const loadedEmployees = result.employees ?? [];
         setEmployees(loadedEmployees);
         setCode((currentCode) => currentCode || loadedEmployees[0]?.code || "");
-        setMessage("Escolha o funcionario, tire a foto na entrada e confirme a marcacao.");
+        showMessage("Escolha o funcionario, tire a foto na entrada e confirme a marcacao.", "info");
       } catch {
-        setMessage("Nao foi possivel carregar funcionarios. Pode digitar o codigo manualmente.");
+        showMessage("Nao foi possivel carregar funcionarios. Pode digitar o codigo manualmente.", "error");
       } finally {
         setIsLoadingEmployees(false);
       }
@@ -56,19 +73,24 @@ export default function TabletPage() {
     loadEmployees();
   }, []);
 
+  function showMessage(text: string, tone: MessageTone) {
+    setMessage(text);
+    setMessageTone(tone);
+  }
+
   async function register(type: TimeEntryType) {
     if (!code) {
-      setMessage("Informe o codigo do funcionario.");
+      showMessage("Informe o codigo do funcionario.", "error");
       return;
     }
 
     if (pin.length < 4) {
-      setMessage("Informe o PIN de 4 digitos para confirmar.");
+      showMessage("Informe o PIN de 4 digitos para confirmar.", "error");
       return;
     }
 
     if (type === "entrada" && !photoFile) {
-      setMessage("Tire ou anexe uma foto para confirmar a entrada.");
+      showMessage("Tire ou anexe uma foto para confirmar a entrada.", "error");
       return;
     }
 
@@ -82,9 +104,14 @@ export default function TabletPage() {
     }
 
     setIsSubmitting(true);
-    setMessage(`A registar ${action.toLowerCase()}...`);
+    showMessage(`A registar ${action.toLowerCase()}...`, "info");
 
     try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        saveOfflineAttempt(type);
+        return;
+      }
+
       const response = await fetch("/api/time-entry", {
         method: "POST",
         body: payload
@@ -92,7 +119,7 @@ export default function TabletPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        setMessage(result.error ?? "Nao foi possivel registar a marcacao.");
+        showMessage(result.error ?? "Nao foi possivel registar a marcacao.", "error");
         return;
       }
 
@@ -108,17 +135,42 @@ export default function TabletPage() {
             ).padStart(2, "0")}.`
           : "";
 
-      setMessage(`${action} registada para ${result.employeeName ?? employee?.name ?? code} as ${now}.${extraText}`);
+      showMessage(`${action} registada para ${result.employeeName ?? employee?.name ?? code} as ${now}.${extraText}`, "success");
       setPin("");
       if (type === "entrada") {
         setPhotoFile(null);
         setPhotoName("");
       }
     } catch {
-      setMessage("Nao foi possivel comunicar com o servidor. Confirme a configuracao do Supabase.");
+      saveOfflineAttempt(type);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function saveOfflineAttempt(type: TimeEntryType) {
+    const savedEntry: OfflineEntry = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now()),
+      code,
+      employeeName: employee?.name ?? code,
+      type,
+      attemptedAt: new Date().toISOString(),
+      photoPending: type === "entrada"
+    };
+    const nextEntries = [savedEntry, ...loadOfflineEntries()].slice(0, 20);
+    saveOfflineEntries(nextEntries);
+    setOfflineEntries(nextEntries);
+    setPin("");
+    showMessage(
+      "Sem ligacao ao servidor. Guardei um registo local pendente para conferencia do gestor; ainda nao e ponto confirmado.",
+      "warning"
+    );
+  }
+
+  function clearOfflineEntries() {
+    saveOfflineEntries([]);
+    setOfflineEntries([]);
+    showMessage("Registos locais pendentes foram limpos neste aparelho.", "info");
   }
 
   return (
@@ -177,6 +229,13 @@ export default function TabletPage() {
           <label className="mt-5 block text-sm font-semibold text-black/65" htmlFor="photo">
             Foto da entrada
           </label>
+          <label
+            htmlFor="photo"
+            className="focus-ring mt-2 inline-flex h-12 cursor-pointer items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold hover:bg-oat"
+          >
+            <Camera size={18} />
+            Clique para foto
+          </label>
           <input
             id="photo"
             type="file"
@@ -187,7 +246,7 @@ export default function TabletPage() {
               setPhotoFile(file);
               setPhotoName(file?.name ?? "");
             }}
-            className="focus-ring mt-2 h-12 w-full rounded-md border border-black/15 bg-white px-3 py-2"
+            className="sr-only"
           />
           <div className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-moss">
             <Camera size={17} />
@@ -211,10 +270,68 @@ export default function TabletPage() {
         </div>
       </section>
 
-      <section className="mt-6 flex items-center gap-3 rounded-lg border border-moss/25 bg-[#eef6ed] p-4 font-semibold text-moss">
-        <CheckCircle2 size={22} />
+      <section className={`mt-6 flex items-center gap-3 rounded-lg border p-4 font-semibold ${messageToneClasses[messageTone]}`}>
+        {messageTone === "error" || messageTone === "warning" ? <AlertTriangle size={22} /> : <CheckCircle2 size={22} />}
         {message}
       </section>
+
+      {offlineEntries.length ? (
+        <section className="mt-4 rounded-lg border border-[#f6c85f]/40 bg-[#fff7e7] p-4 text-sm text-[#725018]">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="font-bold">{offlineEntries.length} registo local pendente neste aparelho</div>
+            <button
+              type="button"
+              onClick={clearOfflineEntries}
+              className="focus-ring rounded-md border border-[#725018]/25 px-3 py-2 font-semibold hover:bg-white"
+            >
+              Limpar pendentes
+            </button>
+          </div>
+          <div className="grid gap-2">
+            {offlineEntries.map((entry) => (
+              <div key={entry.id} className="rounded-md bg-white/70 px-3 py-2">
+                <span className="font-semibold">{entry.employeeName}</span> - {entry.type.replace("_", " ")} -{" "}
+                {formatLocalDateTime(entry.attemptedAt)}
+                {entry.photoPending ? " - foto deve ser validada pelo gestor" : ""}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </PageShell>
   );
+}
+
+const messageToneClasses: Record<MessageTone, string> = {
+  info: "border-moss/25 bg-[#eef6ed] text-moss",
+  success: "border-moss/30 bg-[#e8f3e6] text-moss",
+  error: "border-[#b42318]/30 bg-[#fde8e8] text-[#9b1c1c]",
+  warning: "border-[#f6c85f]/45 bg-[#fff7e7] text-[#725018]"
+};
+
+function loadOfflineEntries() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const saved = window.localStorage.getItem(offlineStorageKey);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? (parsed as OfflineEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveOfflineEntries(entries: OfflineEntry[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(offlineStorageKey, JSON.stringify(entries));
+}
+
+function formatLocalDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
