@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, Download, Pencil, TimerReset, UserRoundCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, Download, Pencil, TimerReset, UserRoundCheck, UserRoundX } from "lucide-react";
 import { EmployeeActions } from "@/components/admin/employee-actions";
 import { EmployeeForm } from "@/components/admin/employee-form";
 import { HourBankActions } from "@/components/admin/hour-bank-actions";
@@ -74,7 +74,14 @@ const fictitiousHourBankNotes = [
   "Horas extra mantidas em banco"
 ];
 
-export default async function AdminPage() {
+type AdminPageProps = {
+  searchParams?: {
+    ok?: string;
+    erro?: string;
+  };
+};
+
+export default async function AdminPage({ searchParams }: AdminPageProps) {
   const data = await loadAdminData();
 
   if ("error" in data) {
@@ -112,6 +119,17 @@ export default async function AdminPage() {
       title="Administracao"
       subtitle="Painel com dados reais do Supabase para acompanhar ponto, ferias e banco de horas."
     >
+      {searchParams?.erro ? (
+        <section className="rounded-lg border border-[#b42318]/30 bg-[#fde8e8] p-4 font-semibold text-[#9b1c1c] shadow-sm">
+          {searchParams.erro}
+        </section>
+      ) : null}
+      {searchParams?.ok ? (
+        <section className="rounded-lg border border-moss/25 bg-[#e8f3e6] p-4 font-semibold text-moss shadow-sm">
+          Operacao concluida com sucesso.
+        </section>
+      ) : null}
+
       <EmployeeForm />
 
       <section className="mb-6 flex flex-wrap gap-3">
@@ -162,7 +180,7 @@ export default async function AdminPage() {
           <h2 className="text-lg font-bold">Funcionarios</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[980px] border-collapse text-left text-sm">
             <thead className="bg-oat text-xs uppercase text-black/60">
               <tr>
                 <th className="px-4 py-3">Codigo</th>
@@ -178,20 +196,24 @@ export default async function AdminPage() {
             <tbody>
               {employees.map((employee) => (
                 <tr key={employee.id} className="border-t border-black/10">
-                  <td className="px-4 py-3 font-semibold">{employee.code}</td>
-                  <td className="px-4 py-3">{employee.name}</td>
-                  <td className="px-4 py-3">{employee.role}</td>
-                  <td className="px-4 py-3">{formatDate(employee.admission_date)}</td>
-                  <td className="px-4 py-3">{employee.weekly_hours}h</td>
-                  <td className="px-4 py-3">{remainingVacationDays(employee, vacationRequests)} dias</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold">{employee.code}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold">{employee.name}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{employee.role}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{formatDate(employee.admission_date)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{employee.weekly_hours}h</td>
+                  <td className="whitespace-nowrap px-4 py-3">{remainingVacationDays(employee, vacationRequests)} dias</td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-[#e8f3e6] px-2 py-1 text-xs font-semibold text-moss">
-                      <UserRoundCheck size={14} />
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ${
+                        employee.active ? "bg-[#e8f3e6] text-moss" : "bg-[#fde8e8] text-[#9b1c1c]"
+                      }`}
+                    >
+                      {employee.active ? <UserRoundCheck size={14} /> : <UserRoundX size={14} />}
                       {employee.active ? "Ativo" : "Inativo"}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-nowrap gap-2">
                       <button className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-md border border-black/15">
                         <Pencil size={16} />
                       </button>
@@ -229,11 +251,7 @@ export default async function AdminPage() {
                   <td className="px-4 py-3 font-semibold">{minutesToHours(summary.overtimeMinutes)}</td>
                   <td className="px-4 py-3 font-semibold">{minutesToHours(hourBankBalances.get(summary.employeeId) ?? 0)}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${
-                      summary.verificationStatus === "rever"
-                        ? "bg-[#fff2d8] text-[#725018]"
-                        : "bg-[#e8f3e6] text-moss"
-                    }`}>
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${statusBadgeClass(summary.verificationStatus)}`}>
                       {summary.verificationStatus}
                     </span>
                   </td>
@@ -270,7 +288,7 @@ export default async function AdminPage() {
                   <td className="px-4 py-3">{transaction.type.replace("_", " ")}</td>
                   <td className="px-4 py-3 font-semibold">{signedMinutesToHours(transaction.minutes)}</td>
                   <td className="px-4 py-3">
-                    <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold uppercase">
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${statusBadgeClass(transaction.status)}`}>
                       {transaction.status}
                     </span>
                   </td>
@@ -327,7 +345,9 @@ export default async function AdminPage() {
                     {request.note ? <div className="mt-1 text-sm text-black/55">{request.note}</div> : null}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-oat px-2 py-1 text-xs font-semibold uppercase">{request.status}</span>
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${statusBadgeClass(request.status)}`}>
+                      {request.status}
+                    </span>
                     <VacationActions requestId={request.id} employeeName={employeeName} status={request.status} />
                   </div>
                 </div>
@@ -378,7 +398,9 @@ async function loadAdminData() {
     const fictitiousEmployeeIds = new Set(
       allEmployees.filter((employee) => isFictitiousEmployee(employee)).map((employee) => employee.id)
     );
-    const employees = allEmployees.filter((employee) => !fictitiousEmployeeIds.has(employee.id));
+    const employees = allEmployees
+      .filter((employee) => !fictitiousEmployeeIds.has(employee.id))
+      .sort(sortEmployeesForAdmin);
     const entries = ((entriesResult.data ?? []) as TimeEntryRow[]).filter(
       (entry) => !fictitiousEmployeeIds.has(entry.employee_id)
     );
@@ -448,6 +470,26 @@ function sortVacationRequests(requests: VacationRow[]) {
     if (statusDiff !== 0) return statusDiff;
     return new Date(second.created_at).getTime() - new Date(first.created_at).getTime();
   });
+}
+
+function sortEmployeesForAdmin(first: EmployeeRow, second: EmployeeRow) {
+  if (first.active !== second.active) {
+    return first.active ? -1 : 1;
+  }
+
+  return first.code.localeCompare(second.code, "pt-PT", { numeric: true, sensitivity: "base" });
+}
+
+function statusBadgeClass(status: "pendente" | "aprovado" | "recusado" | "confirmado" | "rever") {
+  if (status === "aprovado" || status === "confirmado") {
+    return "bg-[#e8f3e6] text-moss";
+  }
+
+  if (status === "recusado" || status === "rever") {
+    return "bg-[#fde8e8] text-[#9b1c1c]";
+  }
+
+  return "bg-[#fff2d8] text-[#725018]";
 }
 
 function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): DailySummary[] {
