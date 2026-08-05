@@ -113,6 +113,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const reviews = summaries.filter((summary) => summary.verificationStatus === "rever");
   const totalOvertimeMinutes = summaries.reduce((total, summary) => total + summary.overtimeMinutes, 0);
   const pendingVacationCount = vacationRequests.filter((request) => request.status === "pendente").length;
+  const defaultReportRange = getDefaultMonthRange();
 
   return (
     <PageShell
@@ -132,15 +133,34 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
 
       <EmployeeForm />
 
-      <section className="mb-6 flex flex-wrap gap-3">
-        <a
-          href="/api/reports/monthly"
-          className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold"
-        >
+      <form
+        action="/api/reports/monthly"
+        method="get"
+        className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-black/10 bg-white p-4 shadow-sm"
+      >
+        <label className="grid gap-1 text-sm font-semibold text-black/65">
+          De
+          <input
+            type="date"
+            name="from"
+            defaultValue={defaultReportRange.from}
+            className="focus-ring h-11 rounded-md border border-black/15 bg-white px-3 text-black"
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-semibold text-black/65">
+          Ate
+          <input
+            type="date"
+            name="to"
+            defaultValue={defaultReportRange.to}
+            className="focus-ring h-11 rounded-md border border-black/15 bg-white px-3 text-black"
+          />
+        </label>
+        <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-4 font-semibold hover:bg-oat">
           <Download size={18} />
           Exportar CSV
-        </a>
-      </section>
+        </button>
+      </form>
 
       <section className="mb-8 grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-gold/35 bg-[#fff7e7] p-5 shadow-sm">
@@ -529,6 +549,10 @@ function calculateWorkedMinutes(entries: TimeEntryRow[]) {
     }
   }
 
+  if (pauseStart) {
+    workedMinutes -= diffMinutes(pauseStart, saida);
+  }
+
   return Math.max(0, workedMinutes);
 }
 
@@ -556,6 +580,21 @@ function formatDate(date: string) {
     month: "2-digit",
     year: "numeric"
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function getDefaultMonthRange() {
+  const month = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit"
+  }).format(new Date());
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+
+  return {
+    from: `${month}-01`,
+    to: `${month}-${String(lastDay).padStart(2, "0")}`
+  };
 }
 
 function getLisbonDateString() {
