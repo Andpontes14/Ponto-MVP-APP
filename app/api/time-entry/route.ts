@@ -222,6 +222,12 @@ function validateSequence(type: TimeEntryType, entries: { type: TimeEntryType; o
   return "";
 }
 
+function hasOpenPause(entries: { type: TimeEntryType; occurred_at: string }[]) {
+  const starts = entries.filter((entry) => entry.type === "inicio_pausa").length;
+  const ends = entries.filter((entry) => entry.type === "fim_pausa").length;
+  return starts > ends;
+}
+
 function calculateWorkedMinutes(entries: { type: TimeEntryType; occurred_at: string }[]) {
   const ordered = [...entries].sort(
     (first, second) => new Date(first.occurred_at).getTime() - new Date(second.occurred_at).getTime()
