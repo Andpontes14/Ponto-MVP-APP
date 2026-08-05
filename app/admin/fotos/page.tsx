@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ArrowLeft, Camera } from "lucide-react";
+import { ArrowLeft, Camera, Search } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 
 type PhotosPageProps = {
   searchParams?: {
     employeeId?: string;
+    date?: string;
   };
 };
 
@@ -33,20 +34,39 @@ type PhotoAuditItem = TimeEntryRow & {
 export const dynamic = "force-dynamic";
 
 export default async function PhotoAuditPage({ searchParams }: PhotosPageProps) {
-  const data = await loadPhotoAuditData(searchParams?.employeeId);
+  const selectedDate = sanitizeDate(searchParams?.date) ?? getLisbonDateString();
+  const data = await loadPhotoAuditData(searchParams?.employeeId, selectedDate);
 
   return (
     <PageShell
       title="Auditoria de fotos"
-      subtitle="Fotografias das marcacoes de hoje para conferencia rapida do gestor."
+      subtitle="Fotografias das marcacoes por data para conferencia rapida do gestor."
     >
-      <Link
-        href="/"
-        className="focus-ring inline-flex items-center gap-2 rounded-md border border-black/15 bg-white px-3 py-2 text-sm font-semibold hover:bg-oat"
-      >
-        <ArrowLeft size={16} />
-        Voltar ao painel
-      </Link>
+      <div className="flex flex-wrap items-end gap-3">
+        <Link
+          href={`/?date=${selectedDate}`}
+          className="focus-ring inline-flex h-11 items-center gap-2 rounded-md border border-black/15 bg-white px-3 text-sm font-semibold hover:bg-oat"
+        >
+          <ArrowLeft size={16} />
+          Voltar ao painel
+        </Link>
+        <form className="flex flex-wrap items-end gap-3" action="/admin/fotos" method="get">
+          {searchParams?.employeeId ? <input type="hidden" name="employeeId" value={searchParams.employeeId} /> : null}
+          <label className="grid gap-1 text-sm font-semibold text-black/65">
+            Data
+            <input
+              type="date"
+              name="date"
+              defaultValue={selectedDate}
+              className="focus-ring h-11 rounded-md border border-black/15 bg-white px-3 text-black"
+            />
+          </label>
+          <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white hover:bg-moss">
+            <Search size={18} />
+            Ver fotos
+          </button>
+        </form>
+      </div>
 
       {"error" in data ? (
         <section className="mt-5 rounded-lg border border-[#b42318]/30 bg-[#fde8e8] p-4 font-semibold text-[#9b1c1c]">
@@ -84,7 +104,7 @@ export default async function PhotoAuditPage({ searchParams }: PhotosPageProps) 
             ))
           ) : (
             <div className="rounded-lg border border-black/10 bg-white p-5 text-sm font-semibold text-black/60 shadow-sm">
-              Nenhuma foto encontrada hoje para este filtro.
+              Nenhuma foto encontrada nesta data para este filtro.
             </div>
           )}
         </section>
@@ -93,11 +113,10 @@ export default async function PhotoAuditPage({ searchParams }: PhotosPageProps) 
   );
 }
 
-async function loadPhotoAuditData(employeeId?: string) {
+async function loadPhotoAuditData(employeeId: string | undefined, selectedDate: string) {
   try {
     const supabase = getSupabaseAdmin();
-    const today = getLisbonDateString();
-    const { dayStart, dayEnd } = getLisbonDayRange(today);
+    const { dayStart, dayEnd } = getLisbonDayRange(selectedDate);
 
     const employeesQuery = supabase.from("employees").select("id, code, name, active").order("code", { ascending: true });
     const entriesQuery = supabase
@@ -124,7 +143,7 @@ async function loadPhotoAuditData(employeeId?: string) {
         let photoUrl: string | null = null;
 
         if (entry.photo_path) {
-          const { data } = await supabase.storage.from("time-photos").createSignedUrl(entry.photo_path, 60 * 10);
+          const { data } = await supabase.storage.from("time-photos").createSignedUrl(entry.photo_path, 60 * 60);
           photoUrl = data?.signedUrl ?? null;
         }
 
@@ -166,6 +185,11 @@ function getLisbonDateString() {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date());
+}
+
+function sanitizeDate(date?: string) {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return date;
 }
 
 function getLisbonDayRange(date: string) {
