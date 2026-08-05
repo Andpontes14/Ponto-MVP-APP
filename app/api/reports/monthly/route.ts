@@ -16,19 +16,22 @@ type TimeEntryRow = {
   occurred_at: string;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
-    const month = getLisbonMonthString();
-    const { monthStart, monthEnd } = getLisbonMonthRange(month);
+    const url = new URL(request.url);
+    const defaultRange = getDefaultMonthRange();
+    const from = sanitizeDate(url.searchParams.get("from")) ?? defaultRange.from;
+    const to = sanitizeDate(url.searchParams.get("to")) ?? defaultRange.to;
+    const { rangeStart, rangeEnd } = getLisbonRange(from, to);
 
     const [employeesResult, entriesResult] = await Promise.all([
       supabase.from("employees").select("id, code, name, role").order("code", { ascending: true }),
       supabase
         .from("time_entries")
         .select("employee_id, type, occurred_at")
-        .gte("occurred_at", monthStart)
-        .lte("occurred_at", monthEnd)
+        .gte("occurred_at", rangeStart)
+        .lte("occurred_at", rangeEnd)
         .order("occurred_at", { ascending: true })
     ]);
 
@@ -37,12 +40,12 @@ export async function GET() {
 
     const employees = (employeesResult.data ?? []) as EmployeeRow[];
     const entries = (entriesResult.data ?? []) as TimeEntryRow[];
-    const csv = buildCsv(month, employees, entries);
+    const csv = buildCsv(from, to, employees, entries);
 
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="ponto-${month}.csv"`
+        "Content-Disposition": `attachment; filename="ponto-${from}-a-${to}.csv"`
       }
     });
   } catch (error) {
@@ -51,10 +54,11 @@ export async function GET() {
   }
 }
 
-function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow[]) {
+function buildCsv(from: string, to: string, employees: EmployeeRow[], entries: TimeEntryRow[]) {
   const rows = [
     [
-      "Mes",
+      "Periodo inicio",
+      "Periodo fim",
       "Data",
       "Codigo",
       "Funcionario",
@@ -82,7 +86,8 @@ function buildCsv(month: string, employees: EmployeeRow[], entries: TimeEntryRow
       const status = marks.entrada && marks.saida ? "Completo" : marks.entrada ? "Em curso" : "Incompleto";
 
       rows.push([
-        month,
+        formatDate(from),
+        formatDate(to),
         formatDate(date),
         employee.code,
         employee.name,
@@ -134,15 +139,11 @@ function calculateWorkedMinutes(entries: TimeEntryRow[]) {
     }
   }
 
-  return Math.max(0, workedMinutes);
-}
+  if (pauseStart) {
+    workedMinutes -= diffMinutes(pauseStart, marks.saida);
+  }
 
-function getLisbonMonthString() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Lisbon",
-    year: "numeric",
-    month: "2-digit"
-  }).format(new Date());
+  return Math.max(0, workedMinutes);
 }
 
 function getLisbonDateString(date: Date) {
@@ -154,13 +155,25 @@ function getLisbonDateString(date: Date) {
   }).format(date);
 }
 
-function getLisbonMonthRange(month: string) {
+function getDefaultMonthRange() {
+  const month = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Lisbon",
+    year: "numeric",
+    month: "2-digit"
+  }).format(new Date());
   const [year, monthNumber] = month.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
 
   return {
-    monthStart: zonedDateTimeToUtcIso(`${month}-01`, "00:00:00", "Europe/Lisbon"),
-    monthEnd: zonedDateTimeToUtcIso(`${month}-${String(lastDay).padStart(2, "0")}`, "23:59:59", "Europe/Lisbon")
+    from: `${month}-01`,
+    to: `${month}-${String(lastDay).padStart(2, "0")}`
+  };
+}
+
+function getLisbonRange(from: string, to: string) {
+  return {
+    rangeStart: zonedDateTimeToUtcIso(from, "00:00:00", "Europe/Lisbon"),
+    rangeEnd: zonedDateTimeToUtcIso(to, "23:59:59", "Europe/Lisbon")
   };
 }
 
@@ -214,4 +227,9 @@ function diffMinutes(start: string, end: string) {
 
 function escapeCsv(value: string) {
   return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function sanitizeDate(date: string | null) {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return date;
 }
