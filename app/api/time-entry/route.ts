@@ -68,6 +68,7 @@ export async function POST(request: Request) {
 
     let photoPath: string | null = null;
     const verificationFlags: string[] = [];
+    const hasOpenPauseBeforeEntry = hasOpenPause(existingEntries ?? []);
 
     if (photo instanceof File && photo.size > 0) {
       const safeName = photo.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -88,6 +89,10 @@ export async function POST(request: Request) {
       if (photo.size < 15_000) {
         verificationFlags.push("Foto muito pequena, rever nitidez");
       }
+    }
+
+    if (type === "saida" && hasOpenPauseBeforeEntry) {
+      verificationFlags.push("Saida registada com pausa aberta");
     }
 
     const { data: entry, error: insertError } = await supabase
@@ -210,10 +215,6 @@ function validateSequence(type: TimeEntryType, entries: { type: TimeEntryType; o
     return "Registe o inicio da pausa antes do fim da pausa.";
   }
 
-  if (type === "saida" && hasOpenPause) {
-    return "Feche a pausa antes de registar a saida.";
-  }
-
   if ((type === "inicio_pausa" || type === "fim_pausa") && counts.saida > 0) {
     return "A jornada ja foi fechada com saida.";
   }
@@ -239,6 +240,10 @@ function calculateWorkedMinutes(entries: { type: TimeEntryType; occurred_at: str
       workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
       pauseStart = null;
     }
+  }
+
+  if (pauseStart) {
+    workedMinutes -= diffMinutes(pauseStart, saida);
   }
 
   return Math.max(0, workedMinutes);
