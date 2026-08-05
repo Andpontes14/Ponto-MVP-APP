@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, Camera, CheckCircle2, Clock, TimerReset, UsersRound } from "lucide-react";
+import { AlertTriangle, CalendarClock, Camera, CheckCircle2, Clock, Search, TimerReset, UsersRound } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
 import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
@@ -43,13 +43,21 @@ type DailySummary = {
   workedMinutes: number;
   overtimeMinutes: number;
   verificationStatus: "confirmado" | "rever";
+  verificationFlags: string[];
   issue?: string;
 };
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const data = await loadDashboardData();
+type DashboardPageProps = {
+  searchParams?: {
+    date?: string;
+  };
+};
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const selectedDate = sanitizeDate(searchParams?.date) ?? getLisbonDateString();
+  const data = await loadDashboardData(selectedDate);
 
   if ("error" in data) {
     return (
@@ -68,10 +76,11 @@ export default async function DashboardPage() {
     );
   }
 
-  const { employees, summaries, pendingVacations, totalHourBankBalance, todayLabel } = data;
+  const { employees, summaries, pendingVacations, totalHourBankBalance, dayLabel, selectedDate: reportDate } = data;
   const present = summaries.filter((summary) => summary.entrada && !summary.saida).length;
   const completed = summaries.filter((summary) => summary.entrada && summary.saida).length;
-  const issues = summaries.filter((summary) => summary.issue || summary.verificationStatus === "rever").length;
+  const issueSummaries = summaries.filter((summary) => summary.issue || summary.verificationStatus === "rever");
+  const issues = issueSummaries.length;
   const totalOvertimeMinutes = summaries.reduce((total, summary) => total + summary.overtimeMinutes, 0);
 
   return (
@@ -79,6 +88,28 @@ export default async function DashboardPage() {
       title="Painel diario"
       subtitle="Resumo real do Supabase para acompanhar equipa, ponto, anomalias e banco de horas."
     >
+      <form className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-black/10 bg-white p-4 shadow-sm" action="/" method="get">
+        <label className="grid gap-1 text-sm font-semibold text-black/65">
+          Data do painel
+          <input
+            type="date"
+            name="date"
+            defaultValue={reportDate}
+            className="focus-ring h-11 rounded-md border border-black/15 bg-white px-3 text-black"
+          />
+        </label>
+        <button className="focus-ring inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white hover:bg-moss">
+          <Search size={18} />
+          Ver dia
+        </button>
+        <Link
+          href="/"
+          className="focus-ring inline-flex h-11 items-center rounded-md border border-black/15 bg-white px-4 font-semibold hover:bg-oat"
+        >
+          Hoje
+        </Link>
+      </form>
+
       <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <StatCard icon={UsersRound} label="Funcionarios ativos" value={String(employees.length)} />
         <StatCard icon={Clock} label="Presentes agora" value={String(present)} tone="success" />
@@ -90,7 +121,7 @@ export default async function DashboardPage() {
 
       <section className="mt-8 overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
-          <h2 className="text-lg font-bold">Ponto de {todayLabel}</h2>
+          <h2 className="text-lg font-bold">Ponto de {dayLabel}</h2>
           {issues > 0 ? (
             <span className="inline-flex items-center gap-2 rounded-md bg-[#fff2d8] px-3 py-1 text-sm font-semibold text-[#725018]">
               <AlertTriangle size={16} />
@@ -98,6 +129,22 @@ export default async function DashboardPage() {
             </span>
           ) : null}
         </div>
+        {issueSummaries.length ? (
+          <div className="border-b border-black/10 bg-[#fff7e7] px-4 py-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-bold text-[#725018]">
+              <AlertTriangle size={16} />
+              Anomalias encontradas
+            </div>
+            <div className="grid gap-2 text-sm">
+              {issueSummaries.map((summary) => (
+                <div key={summary.employeeId} className="rounded-md bg-white/70 px-3 py-2">
+                  <span className="font-semibold">{summary.employeeName}:</span>{" "}
+                  {[summary.issue, ...summary.verificationFlags].filter(Boolean).join("; ") || "Rever marcacao"}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
             <thead className="bg-oat text-xs uppercase text-black/60">
@@ -161,7 +208,7 @@ export default async function DashboardPage() {
                   <td className="px-4 py-3">
                     {summary.hasPhoto ? (
                       <Link
-                        href={`/admin/fotos?employeeId=${summary.employeeId}`}
+                        href={`/admin/fotos?employeeId=${summary.employeeId}&date=${reportDate}`}
                         className="focus-ring inline-flex items-center gap-1 rounded-md border border-black/15 px-2 py-1 text-xs font-semibold hover:bg-oat"
                       >
                         <Camera size={14} />
@@ -181,11 +228,10 @@ export default async function DashboardPage() {
   );
 }
 
-async function loadDashboardData() {
+async function loadDashboardData(selectedDate: string) {
   try {
     const supabase = getSupabaseAdmin();
-    const today = getLisbonDateString();
-    const { dayStart, dayEnd } = getLisbonDayRange(today);
+    const { dayStart, dayEnd } = getLisbonDayRange(selectedDate);
 
     const [employeesResult, entriesResult, hourBankResult, vacationResult] = await Promise.all([
       supabase.from("employees").select("id, code, name, active").eq("active", true).order("code", { ascending: true }),
@@ -216,7 +262,8 @@ async function loadDashboardData() {
       summaries,
       pendingVacations: vacations.length,
       totalHourBankBalance,
-      todayLabel: formatDate(today)
+      dayLabel: formatDate(selectedDate),
+      selectedDate
     };
   } catch (error) {
     return {
@@ -230,13 +277,18 @@ function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): Dail
     const employeeEntries = entries.filter((entry) => entry.employee_id === employee.id);
     const byType = getDayMarks(employeeEntries);
     const hasReview = employeeEntries.some((entry) => entry.verification_status === "rever");
+    const verificationFlags = employeeEntries.flatMap((entry) => entry.verification_flags ?? []);
     const workedMinutes = calculateWorkedMinutes(employeeEntries);
     let issue: string | undefined;
 
     if (employeeEntries.length > 0 && !byType.entrada) {
       issue = "Sem entrada";
+    } else if (byType.entrada && byType.saida && hasOpenPause(employeeEntries)) {
+      issue = "Saida com pausa aberta";
     } else if (byType.entrada && hasOpenPause(employeeEntries)) {
       issue = "Pausa aberta";
+    } else if (byType.entrada && !byType.saida) {
+      issue = "Sem saida";
     }
 
     return {
@@ -252,6 +304,7 @@ function buildSummaries(employees: EmployeeRow[], entries: TimeEntryRow[]): Dail
       workedMinutes,
       overtimeMinutes: Math.max(0, workedMinutes - 480),
       verificationStatus: hasReview ? "rever" : "confirmado",
+      verificationFlags,
       issue
     };
   });
@@ -301,6 +354,10 @@ function calculateWorkedMinutes(entries: TimeEntryRow[]) {
     }
   }
 
+  if (pauseStart) {
+    workedMinutes -= diffMinutes(pauseStart, saida);
+  }
+
   return Math.max(0, workedMinutes);
 }
 
@@ -311,6 +368,11 @@ function getLisbonDateString() {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date());
+}
+
+function sanitizeDate(date?: string) {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return date;
 }
 
 function getLisbonDayRange(date: string) {
