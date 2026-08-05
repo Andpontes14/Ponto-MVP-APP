@@ -144,6 +144,8 @@ function buildTimeDays(entries: TimeEntryRow[]) {
 
       if (ordered.length > 0 && !byType.entrada) {
         issue = "Sem entrada";
+      } else if (byType.entrada && byType.saida && hasOpenPause(ordered)) {
+        issue = "Saida com pausa aberta";
       } else if (byType.entrada && hasOpenPause(ordered)) {
         issue = "Pausa aberta";
       } else if (byType.entrada && !byType.saida) {
@@ -194,6 +196,10 @@ function calculateWorkedMinutes(entries: TimeEntryRow[]) {
       workedMinutes -= diffMinutes(pauseStart, entry.occurred_at);
       pauseStart = null;
     }
+  }
+
+  if (pauseStart) {
+    workedMinutes -= diffMinutes(pauseStart, saida);
   }
 
   return Math.max(0, workedMinutes);
